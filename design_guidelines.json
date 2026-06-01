@@ -1,0 +1,142 @@
+{
+  "project_name": "Atho",
+  "theme_and_archetype": {
+    "theme": "Light",
+    "archetype": "Athletic Data-Driven (Performance Pro / Swiss High-Contrast Hybrid)",
+    "rationale": "Matches the user request for a 'clean blue-and-white color scheme with a modern and professional appearance', filtering out the typical dark 'fintech-bro' or neon 'gamer' vibes in favor of a clinical, data-rich Strava/Whoop aesthetic that prioritizes legibility and performance."
+  },
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Outfit",
+        "description": "Strong, athletic, geometric, highly legible for numbers and PRs."
+      },
+      "body": {
+        "family": "Work Sans",
+        "description": "Clean, clinical sans-serif for high data density readability."
+      }
+    },
+    "scales": {
+      "h1": "text-3xl sm:text-4xl font-bold tracking-tight",
+      "h2": "text-xl sm:text-2xl font-bold tracking-tight",
+      "h3": "text-lg font-semibold tracking-tight",
+      "body": "text-base font-medium leading-relaxed",
+      "small": "text-sm text-slate-500",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-slate-500"
+    },
+    "guidelines": "Do NOT use Inter for headings. Keep headings tight (`tracking-tight`). Use overlines extensively for data labels (e.g., 'VOLUME', '1RM')."
+  },
+  "colors": {
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#F8F9FA",
+      "tertiary": "#F1F5F9"
+    },
+    "brand": {
+      "primary": "#2563EB",
+      "primary_hover": "#1D4ED8",
+      "accent": "#0ea5e9"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "muted": "#94A3B8",
+      "inverse": "#FFFFFF"
+    },
+    "status": {
+      "success": "#22C55E",
+      "warning": "#F59E0B",
+      "danger": "#EF4444",
+      "pr_highlight": "#F59E0B"
+    },
+    "ui_elements": {
+      "border": "#E2E8F0",
+      "divider": "#F1F5F9"
+    }
+  },
+  "spacing_and_layout": {
+    "container": "w-full max-w-md mx-auto min-h-screen bg-white pb-20 shadow-xl",
+    "padding": {
+      "page": "p-4 sm:p-6",
+      "card": "p-4",
+      "dense_row": "py-2 px-3"
+    },
+    "border_radius": {
+      "card": "rounded-xl",
+      "button": "rounded-lg",
+      "input": "rounded-lg",
+      "pill": "rounded-full"
+    },
+    "shadows": {
+      "card": "shadow-sm",
+      "floating_nav": "shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]",
+      "none": "shadow-none"
+    },
+    "layout_strategy": "Mobile-first, single column. Emulate a mobile app environment with a fixed max-width container centered on desktop screens. Use 'Control Room' grids for the Premium Analytics screens (dense 2-column stats blocks)."
+  },
+  "components": {
+    "navigation": {
+      "bottom_tab_bar": "Fixed at bottom (`fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 z-50`). 5 equal items. Active item uses brand primary color, inactive uses text-muted.",
+      "header": "Sticky top (`sticky top-0 bg-white/90 backdrop-blur-md z-40 border-b border-slate-100`)."
+    },
+    "cards": {
+      "standard": "bg-white border border-slate-200 rounded-xl p-4 shadow-sm",
+      "premium_insight": "bg-blue-50 border border-blue-100 rounded-xl p-4",
+      "workout_feed": "bg-white border-b border-slate-100 py-5"
+    },
+    "buttons": {
+      "primary": "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg w-full transition-colors",
+      "secondary": "bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold py-3 px-4 rounded-lg w-full transition-colors",
+      "logging_action": "bg-blue-50 text-blue-700 font-bold py-2 px-4 rounded-lg"
+    },
+    "workout_logger": {
+      "set_row": "flex items-center justify-between py-2 border-b border-slate-50 last:border-0",
+      "input": "bg-slate-100 text-slate-900 font-semibold text-center rounded-md w-16 h-10",
+      "check_button": "w-10 h-10 rounded-md bg-slate-200 flex items-center justify-center. Active state: bg-green-500 text-white."
+    },
+    "charts": {
+      "style": "Use Recharts. Line charts for 1RM and volume with smooth curves. Clean, minimal grid lines (stroke-dasharray). Brand primary color for lines. Use tooltip for exact values."
+    }
+  },
+  "interactions_and_motion": {
+    "hover_states": "All buttons MUST have hover states defined. Inputs must have `focus:ring-2 focus:ring-blue-500`.",
+    "transitions": "Use `transition-all duration-200 ease-in-out` on buttons, tabs, and set-completion toggles.",
+    "touch_targets": "Minimum 44x44px for all interactive elements to ensure finger-friendliness during workouts."
+  },
+  "media": {
+    "usage_rules": "Use these exact images. NEVER use placeholders.",
+    "images": [
+      {
+        "category": "feed_athlete_1",
+        "url": "https://images.unsplash.com/photo-1604233098531-90b71b1b17a6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwzfHxhdGhsZXRlJTIwd2VpZ2h0bGlmdGluZyUyMGd5bSUyMHRyYWluaW5nfGVufDB8fHx8MTc4MDI4ODE1NXww&ixlib=rb-4.1.0&q=85",
+        "description": "Athlete doing pull up (use in Social Feed)"
+      },
+      {
+        "category": "feed_athlete_2",
+        "url": "https://images.unsplash.com/photo-1722925541142-5db2668ca492?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwxfHxhdGhsZXRlJTIwd2VpZ2h0bGlmdGluZyUyMGd5bSUyMHRyYWluaW5nfGVufDB8fHx8MTc4MDI4ODE1NXww&ixlib=rb-4.1.0&q=85",
+        "description": "Woman lifting barbell (use in Social Feed)"
+      },
+      {
+        "category": "feed_athlete_3",
+        "url": "https://images.pexels.com/photos/1552106/pexels-photo-1552106.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Man squatting (use in Social Feed or Profile)"
+      },
+      {
+        "category": "premium_dashboard",
+        "url": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwxfHxkYXRhJTIwYW5hbHl0aWNzJTIwZGFzaGJvYXJkJTIwY2hhcnR8ZW58MHx8fHwxNzgwMjg4MTU1fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Data analytics visual for Premium Subscription Paywall background/header"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "All interactive and key informational elements MUST include a `data-testid` attribute (e.g. `data-testid=\"workout-start-button\"`).",
+    "App container should emulate mobile view on desktop screens by wrapping the main routing element in a centered max-w-md container with a shadow.",
+    "Do NOT use HTML native date pickers or selects; use Shadcn UI components but heavily customized to fit the clinical, clean mobile app look (no default Vercel vibes).",
+    "Ensure bottom tab bar padding is accounted for so content doesn't get hidden behind it (`pb-20`).",
+    "For the Workout Logger, prioritize ease of use: large checkboxes, easy-to-tap numeric inputs, and clear distinct hierarchy for exercises vs sets.",
+    "For Premium Analytics, use Recharts. Make it look like a Whoop dashboard: dense, clean, clinical lines, heavily utilizing the blue brand color and gray text.",
+    "No generic purple gradients. Stick strictly to the blue, white, and slate gray color palette.",
+    "Images MUST be sourced exclusively from the provided media block.",
+    "The environment uses React JS (not TSX), so ensure all created components are standard JS with Tailwind CSS classes."
+  ]
+}
