@@ -1,30 +1,19 @@
-import { Text, View, StyleSheet, Image } from "react-native";
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import React from "react";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { colors } from "@/src/theme";
 
 export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
-
   return (
     <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
+      <Text style={styles.logo}>Atho</Text>
+      <Text style={styles.tagline}>Train. Track. Triumph.</Text>
+      <ActivityIndicator color={colors.brand} style={{ marginTop: 20 }} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0c0c0c",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "contain",
-  },
+  container: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
+  logo: { fontSize: 48, fontWeight: "900", color: colors.brand, letterSpacing: -1.5 },
+  tagline: { fontSize: 14, color: colors.textMuted, marginTop: 4, fontWeight: "600" },
 });

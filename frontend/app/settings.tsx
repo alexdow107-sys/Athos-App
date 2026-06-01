@@ -1,0 +1,167 @@
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+
+import { api } from "@/src/api/client";
+import { useAuth } from "@/src/context/AuthContext";
+import { Button } from "@/src/components/Button";
+import { colors, radius, spacing } from "@/src/theme";
+
+export default function SettingsScreen() {
+  const router = useRouter();
+  const { user, refresh, logout } = useAuth();
+  const [displayName, setDisplayName] = useState(user?.display_name || "");
+  const [username, setUsername] = useState(user?.username || "");
+  const [bio, setBio] = useState(user?.bio || "");
+  const [heightUnit, setHeightUnit] = useState<"cm" | "ft_in">((user?.height_unit as any) || "cm");
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lb">((user?.weight_unit as any) || "kg");
+  const [height, setHeight] = useState(String(user?.height || ""));
+  const [weight, setWeight] = useState(String(user?.weight || ""));
+  const [isPrivate, setIsPrivate] = useState(!!user?.is_private);
+  const [hideFollowers, setHideFollowers] = useState(!!user?.hide_followers);
+  const [showStatus, setShowStatus] = useState(user?.show_workout_status !== false);
+  const [saving, setSaving] = useState(false);
+
+  const onSave = async () => {
+    setSaving(true);
+    try {
+      await api("/users/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          display_name: displayName,
+          username,
+          bio,
+          height_unit: heightUnit,
+          weight_unit: weightUnit,
+          height: height ? parseFloat(height) : null,
+          weight: weight ? parseFloat(weight) : null,
+          is_private: isPrivate,
+          hide_followers: hideFollowers,
+          show_workout_status: showStatus,
+        }),
+      });
+      await refresh();
+      Alert.alert("Saved", "Profile updated");
+    } catch (e: any) {
+      Alert.alert("Failed", e.message);
+    } finally { setSaving(false); }
+  };
+
+  const onLogout = () => {
+    Alert.alert("Sign out?", "", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign out", style: "destructive", onPress: async () => {
+        await logout();
+        router.replace("/auth/login");
+      }},
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top"]} testID="settings-screen">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={styles.header}>
+          <TouchableOpacity testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Settings</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+          <Text style={styles.section}>Profile</Text>
+          <Text style={styles.label}>Display name</Text>
+          <TextInput testID="settings-displayname" value={displayName} onChangeText={setDisplayName} style={styles.input} placeholderTextColor={colors.textMuted} />
+          <Text style={styles.label}>Username</Text>
+          <TextInput testID="settings-username" value={username} onChangeText={(t) => setUsername(t.toLowerCase())} autoCapitalize="none" style={styles.input} placeholderTextColor={colors.textMuted} />
+          <Text style={styles.label}>Bio</Text>
+          <TextInput testID="settings-bio" value={bio} onChangeText={setBio} multiline style={[styles.input, { minHeight: 60 }]} placeholder="Tell people about your training" placeholderTextColor={colors.textMuted} />
+
+          <Text style={styles.section}>Body</Text>
+          <Text style={styles.label}>Height ({heightUnit === "cm" ? "cm" : "in"})</Text>
+          <TextInput testID="settings-height" value={height} onChangeText={setHeight} keyboardType="numeric" style={styles.input} placeholderTextColor={colors.textMuted} />
+          <Text style={styles.label}>Weight ({weightUnit})</Text>
+          <TextInput testID="settings-weight" value={weight} onChangeText={setWeight} keyboardType="numeric" style={styles.input} placeholderTextColor={colors.textMuted} />
+
+          <Text style={styles.section}>Units</Text>
+          <View style={styles.row}>
+            <TouchableOpacity testID="unit-kg" onPress={() => setWeightUnit("kg")} style={[styles.choice, weightUnit === "kg" && styles.choiceActive]}>
+              <Text style={[styles.choiceText, weightUnit === "kg" && styles.choiceTextActive]}>Kilograms</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="unit-lb" onPress={() => setWeightUnit("lb")} style={[styles.choice, weightUnit === "lb" && styles.choiceActive]}>
+              <Text style={[styles.choiceText, weightUnit === "lb" && styles.choiceTextActive]}>Pounds</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.row, { marginTop: 8 }]}>
+            <TouchableOpacity testID="unit-cm" onPress={() => setHeightUnit("cm")} style={[styles.choice, heightUnit === "cm" && styles.choiceActive]}>
+              <Text style={[styles.choiceText, heightUnit === "cm" && styles.choiceTextActive]}>Centimeters</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="unit-ft" onPress={() => setHeightUnit("ft_in")} style={[styles.choice, heightUnit === "ft_in" && styles.choiceActive]}>
+              <Text style={[styles.choiceText, heightUnit === "ft_in" && styles.choiceTextActive]}>Feet & Inches</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.section}>Privacy</Text>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleTitle}>Private account</Text>
+              <Text style={styles.toggleDesc}>Approve followers manually</Text>
+            </View>
+            <Switch testID="toggle-private" value={isPrivate} onValueChange={setIsPrivate} trackColor={{ true: colors.brand, false: colors.border }} />
+          </View>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleTitle}>Hide followers list</Text>
+              <Text style={styles.toggleDesc}>Others can't see who follows you</Text>
+            </View>
+            <Switch testID="toggle-hide-followers" value={hideFollowers} onValueChange={setHideFollowers} trackColor={{ true: colors.brand, false: colors.border }} />
+          </View>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleTitle}>Show "Currently Working Out"</Text>
+              <Text style={styles.toggleDesc}>Display live status on your profile</Text>
+            </View>
+            <Switch testID="toggle-show-status" value={showStatus} onValueChange={setShowStatus} trackColor={{ true: colors.brand, false: colors.border }} />
+          </View>
+
+          <View style={{ marginTop: spacing.xl }}>
+            <Button testID="save-settings-btn" title="Save changes" onPress={onSave} loading={saving} />
+          </View>
+
+          <Text style={styles.section}>Subscription</Text>
+          <TouchableOpacity testID="manage-sub-btn" style={styles.linkRow} onPress={() => router.push("/subscription")}>
+            <Ionicons name="star" size={18} color={colors.pr} />
+            <Text style={styles.linkText}>{user?.is_premium ? "Manage subscription" : "Upgrade to Premium"}</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={{ marginTop: spacing.xl }}>
+            <Button testID="logout-btn" title="Sign out" variant="ghost" onPress={onLogout} />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: { flexDirection: "row", alignItems: "center", padding: spacing.sm, justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.divider },
+  iconBtn: { padding: 6 },
+  headerTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+  section: { fontSize: 11, fontWeight: "900", color: colors.textMuted, letterSpacing: 1.2, marginTop: spacing.xl, marginBottom: spacing.sm, textTransform: "uppercase" },
+  label: { color: colors.textSecondary, fontSize: 13, fontWeight: "600", marginBottom: 6, marginTop: spacing.sm },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12, fontSize: 15, color: colors.text, backgroundColor: colors.bg },
+  row: { flexDirection: "row", gap: 8 },
+  choice: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 11, alignItems: "center" },
+  choiceActive: { borderColor: colors.brand, backgroundColor: colors.brandLight },
+  choiceText: { color: colors.textSecondary, fontSize: 13, fontWeight: "700" },
+  choiceTextActive: { color: colors.brand, fontWeight: "800" },
+  toggleRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  toggleTitle: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  toggleDesc: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  linkRow: { flexDirection: "row", alignItems: "center", padding: spacing.md, backgroundColor: colors.bg2, borderRadius: radius.lg, gap: 10 },
+  linkText: { flex: 1, color: colors.text, fontWeight: "700", fontSize: 14 },
+});
