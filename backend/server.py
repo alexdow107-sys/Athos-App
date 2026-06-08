@@ -260,6 +260,7 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "height": u.get("height"),
         "weight": u.get("weight"),
         "onboarded": u.get("onboarded", False),
+        "seen_welcome_tour": u.get("seen_welcome_tour", False),
         "training_days_per_week": u.get("training_days_per_week"),
         "main_goal": u.get("main_goal"),
         "weight_goal": u.get("weight_goal"),
@@ -1580,6 +1581,12 @@ async def stripe_webhook(request: Request):
                 {"$set": {"premium_granted": True, "status": "complete", "payment_status": "paid"}},
             )
     return {"received": True}
+
+
+@api.post("/users/me/seen-tour")
+async def mark_tour_seen(current=Depends(get_current_user)):
+    await db.users.update_one({"user_id": current["user_id"]}, {"$set": {"seen_welcome_tour": True}})
+    return {"ok": True}
 
 
 # ===== HEALTH =====

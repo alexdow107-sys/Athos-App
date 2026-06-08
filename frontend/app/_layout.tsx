@@ -54,14 +54,19 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     const inAuth = segments[0] === "auth";
+    const isIntro = segments[1] === "intro";
+    const isOnboarding = segments[1] === "onboarding";
+
     if (!user && !inAuth) {
       router.replace("/auth/login");
-    } else if (user && !user.onboarded && segments[1] !== "onboarding" && segments[1] !== "intro" && !inAuth) {
+    } else if (user && !user.onboarded && !isOnboarding && !isIntro) {
+      // New user → show tour first, then onboarding
       router.replace("/auth/intro");
-    } else if (user && user.onboarded && inAuth) {
+    } else if (user && user.onboarded && !user.seen_welcome_tour && !isIntro) {
+      // Existing user who hasn't seen tour → show it once
+      router.replace("/auth/intro");
+    } else if (user && user.onboarded && user.seen_welcome_tour && inAuth) {
       router.replace("/(tabs)");
-    } else if (user && !user.onboarded && inAuth && segments[1] !== "onboarding" && segments[1] !== "intro") {
-      router.replace("/auth/intro");
     }
   }, [user, loading, segments, router]);
 

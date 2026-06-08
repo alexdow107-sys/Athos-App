@@ -1,122 +1,172 @@
-import React, { useState, useRef } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Dimensions, Image } from "react-native";
+import React from "react";
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useAuth } from "@/src/context/AuthContext";
 import { LogoMark } from "@/src/components/Logo";
-import { Button } from "@/src/components/Button";
 import { colors, radius, spacing } from "@/src/theme";
+import { api } from "@/src/api/client";
 
 const { width } = Dimensions.get("window");
-const W = Math.min(width, 700);
+const W = Math.min(width, 720);
 
-const SLIDES = [
+const SECTIONS = [
   {
-    icon: "barbell",
-    title: "Track every rep.",
-    body: "Log your lifts in seconds. Sets, reps, weight, and unilateral L/R tracking — built for the gym floor.",
-    img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=900&q=70",
+    image: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&q=70",
+    overlayTitle: "Make every workout count.",
+    cta: "Log Your First Workout",
+    target: "/(tabs)/workout",
+    body: {
+      heading: "Tracking made easy",
+      text: "Athos makes logging lifts, cardio, and sports effortless. Sets, reps, weight, machine, even left/right side — all in one tap.",
+    },
   },
   {
-    icon: "trending-up",
-    title: "See your progress.",
-    body: "Estimated 1RM, weekly volume, muscle distribution, and plateau detection — turn data into PRs.",
-    img: "https://images.unsplash.com/photo-1599058917765-a780eda07a3e?w=900&q=70",
+    image: "https://images.unsplash.com/photo-1599058917765-a780eda07a3e?w=1200&q=70",
+    overlayTitle: "See your progress.",
+    cta: "Open Analytics",
+    target: "/analytics",
+    body: {
+      heading: "Strength data that matters",
+      text: "Estimated 1RM trends, weekly volume, plateau detection, and L/R imbalance analysis — built for serious lifters.",
+    },
   },
   {
-    icon: "people",
-    title: "Train with athletes.",
-    body: "Follow lifters, share workouts, and copy programs that work. No lifestyle noise — just the work.",
-    img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=900&q=70",
+    image: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1200&q=70",
+    overlayTitle: "Train with athletes.",
+    cta: "Discover Athletes",
+    target: "/(tabs)/discover",
+    body: {
+      heading: "Cheer on your community",
+      text: "Athos is about training, not lifestyle. Follow real lifters, comment on workouts, save the ones you want to copy.",
+    },
   },
   {
-    icon: "sparkles",
-    title: "AI coach in your pocket.",
-    body: "Premium users get personalized weekly plans and live coaching tips powered by Claude — built on Athos coaching rules.",
-    img: "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=900&q=70",
+    image: "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=1200&q=70",
+    overlayTitle: "Get an AI coach.",
+    cta: "Try Athos Premium",
+    target: "/subscription",
+    body: {
+      heading: "Personalized weekly plans",
+      text: "Premium users get a coach-built weekly split powered by Claude AI — informed by your goals, training notes, and recent sessions.",
+    },
   },
 ];
 
 export default function IntroScreen() {
   const router = useRouter();
-  const [idx, setIdx] = useState(0);
-  const listRef = useRef<FlatList>(null);
+  const { user, refresh } = useAuth();
 
-  const onNext = () => {
-    if (idx < SLIDES.length - 1) {
-      const next = idx + 1;
-      setIdx(next);
-      listRef.current?.scrollToIndex({ index: next, animated: true });
-    } else {
-      router.replace("/auth/onboarding");
-    }
+  const onContinue = async () => {
+    try {
+      await api("/users/me/seen-tour", { method: "POST" });
+      await refresh();
+    } catch {}
+    if (user && !user.onboarded) router.replace("/auth/onboarding");
+    else router.replace("/(tabs)");
   };
-
-  const onSkip = () => router.replace("/auth/onboarding");
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="intro-screen">
       <View style={styles.topBar}>
-        <LogoMark size={28} tint={colors.brand} />
-        <TouchableOpacity testID="intro-skip-btn" onPress={onSkip} style={styles.skipBtn}>
+        <View style={styles.brandRow}>
+          <LogoMark size={22} tint={colors.brand} />
+          <Text style={styles.brand}>Athos</Text>
+        </View>
+        <TouchableOpacity testID="intro-skip-btn" onPress={onContinue} style={styles.skipBtn}>
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        ref={listRef}
-        data={SLIDES}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
-        keyExtractor={(_, i) => String(i)}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width: W }]}>
-            <View style={styles.imgWrap}>
-              <Image source={{ uri: item.img }} style={styles.image} />
-              <View style={styles.imgOverlay} />
-              <View style={styles.iconBubble}>
-                <Ionicons name={item.icon as any} size={28} color="#fff" />
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+        {/* Welcome header */}
+        <View style={styles.welcomeBlock}>
+          <Text style={styles.helloText}>{user?.display_name?.split(" ")[0] || "Welcome"},</Text>
+          <Text style={styles.welcomeTitle}>Welcome to Athos.</Text>
+          <Text style={styles.welcomeSub}>Here's what you get with Athos — track lifts, see real progress, and train with serious athletes.</Text>
+          <TouchableOpacity testID="intro-start-btn" onPress={onContinue} style={styles.welcomeBtn} activeOpacity={0.85}>
+            <Text style={styles.welcomeBtnText}>Get started</Text>
+          </TouchableOpacity>
+        </View>
+
+        {SECTIONS.map((s, i) => (
+          <View key={i} testID={`intro-section-${i}`}>
+            <View style={[styles.heroWrap, { width: W }]}>
+              <Image source={{ uri: s.image }} style={styles.heroImage} />
+              <View style={styles.heroOverlay} />
+              <View style={styles.heroContent}>
+                <Text style={styles.heroTitle}>{s.overlayTitle}</Text>
+                <TouchableOpacity
+                  testID={`intro-cta-${i}`}
+                  onPress={async () => {
+                    try { await api("/users/me/seen-tour", { method: "POST" }); await refresh(); } catch {}
+                    router.replace(s.target as any);
+                  }}
+                  style={styles.heroBtn}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.heroBtnText}>{s.cta}</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.body}>{item.body}</Text>
+            <View style={styles.bodyBlock}>
+              <Text style={styles.bodyHeading}>{s.body.heading}</Text>
+              <Text style={styles.bodyText}>{s.body.text}</Text>
+            </View>
           </View>
-        )}
-      />
+        ))}
 
-      <View style={styles.bottom}>
-        <View style={styles.dots}>
-          {SLIDES.map((_, i) => (
-            <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
-          ))}
+        {/* Footer */}
+        <View style={styles.footer}>
+          <LogoMark size={28} tint={colors.brand} />
+          <Text style={styles.footerBrand}>Athos</Text>
+          <Text style={styles.footerText}>Train. Track. Triumph.</Text>
+          <TouchableOpacity testID="intro-done-btn" onPress={onContinue} style={styles.doneBtn} activeOpacity={0.85}>
+            <Text style={styles.doneBtnText}>Continue to Athos</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
         </View>
-        <Button
-          testID="intro-next-btn"
-          title={idx < SLIDES.length - 1 ? "Next" : "Let's go"}
-          onPress={onNext}
-        />
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.md },
+  topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  brand: { color: colors.brand, fontWeight: "900", fontSize: 18, letterSpacing: -0.5 },
   skipBtn: { padding: 6 },
   skipText: { color: colors.textMuted, fontWeight: "700", fontSize: 14 },
-  slide: { padding: spacing.lg, alignItems: "center" },
-  imgWrap: { width: "100%", height: 360, borderRadius: radius.xl, overflow: "hidden", backgroundColor: colors.bg3, marginBottom: spacing.xl },
-  image: { width: "100%", height: "100%" },
-  imgOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(37, 99, 235, 0.12)" },
-  iconBubble: { position: "absolute", top: 16, left: 16, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 32, fontWeight: "900", color: colors.text, letterSpacing: -0.8, textAlign: "center" },
-  body: { fontSize: 16, color: colors.textSecondary, marginTop: spacing.md, textAlign: "center", lineHeight: 24, paddingHorizontal: spacing.md },
-  bottom: { padding: spacing.lg, paddingBottom: spacing.xl },
-  dots: { flexDirection: "row", justifyContent: "center", gap: 6, marginBottom: spacing.lg },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.bg3 },
-  dotActive: { backgroundColor: colors.brand, width: 24 },
+
+  // Welcome block (mimics Strava's first card)
+  welcomeBlock: { backgroundColor: colors.brand, padding: spacing.xl, paddingTop: spacing.xxl, paddingBottom: spacing.xxl },
+  helloText: { color: "rgba(255,255,255,0.9)", fontSize: 18, fontWeight: "700" },
+  welcomeTitle: { color: "#fff", fontSize: 36, fontWeight: "900", marginTop: 6, letterSpacing: -0.8, lineHeight: 42 },
+  welcomeSub: { color: "rgba(255,255,255,0.85)", fontSize: 15, marginTop: spacing.md, lineHeight: 22 },
+  welcomeBtn: { marginTop: spacing.xl, backgroundColor: "#fff", paddingVertical: 14, paddingHorizontal: 24, borderRadius: 4, alignSelf: "flex-start" },
+  welcomeBtnText: { color: colors.brand, fontWeight: "800", fontSize: 14 },
+
+  // Hero section with image
+  heroWrap: { height: 420, position: "relative" },
+  heroImage: { width: "100%", height: "100%" },
+  heroOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.45)" },
+  heroContent: { position: "absolute", left: 0, right: 0, top: spacing.xl, padding: spacing.lg },
+  heroTitle: { color: "#fff", fontSize: 32, fontWeight: "900", letterSpacing: -0.6, lineHeight: 38, marginBottom: spacing.lg, maxWidth: "85%" },
+  heroBtn: { backgroundColor: colors.brand, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 4, alignSelf: "flex-start" },
+  heroBtnText: { color: "#fff", fontWeight: "800", fontSize: 13, letterSpacing: 0.3 },
+
+  // Body section below hero (mimics Strava's "Tracking made easy" block)
+  bodyBlock: { padding: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.xxl, backgroundColor: colors.bg, alignItems: "center" },
+  bodyHeading: { color: colors.text, fontSize: 22, fontWeight: "900", textAlign: "center", letterSpacing: -0.4 },
+  bodyText: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.md, textAlign: "center", lineHeight: 21, maxWidth: 480 },
+
+  // Footer
+  footer: { padding: spacing.xl, paddingVertical: spacing.xxl, alignItems: "center", borderTopWidth: 1, borderTopColor: colors.divider },
+  footerBrand: { color: colors.brand, fontWeight: "900", fontSize: 22, marginTop: 6, letterSpacing: -0.5 },
+  footerText: { color: colors.textMuted, fontSize: 13, fontWeight: "600", marginTop: 2 },
+  doneBtn: { flexDirection: "row", alignItems: "center", backgroundColor: colors.brand, paddingVertical: 14, paddingHorizontal: 28, borderRadius: 4, marginTop: spacing.lg },
+  doneBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 });

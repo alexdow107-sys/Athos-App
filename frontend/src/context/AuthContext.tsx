@@ -21,6 +21,7 @@ export interface AthoUser {
   height?: number | null;
   weight?: number | null;
   onboarded?: boolean;
+  seen_welcome_tour?: boolean;
 }
 
 interface AuthCtx {
