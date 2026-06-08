@@ -25,7 +25,7 @@ export default function Index() {
       : !user.onboarded
       ? "/auth/onboarding"
       : !user.seen_welcome_tour
-      ? "/auth/intro"
+      ? "/auth/app-tour"
       : "/(tabs)";
     try {
       router.replace(target as any);
@@ -47,7 +47,7 @@ export default function Index() {
           : !user.onboarded
           ? "/auth/onboarding"
           : !user.seen_welcome_tour
-          ? "/auth/intro"
+          ? "/auth/app-tour"
           : "/feed";
         window.location.replace(target);
       }

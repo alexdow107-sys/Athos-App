@@ -8,6 +8,7 @@ import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
 import { Avatar } from "@/src/components/Avatar";
+import { ShareToChatSheet, SharePayload } from "@/src/components/ShareToChatSheet";
 import { fmtDuration, fmtVolume, fmtDate, fmtRelative } from "@/src/utils/format";
 
 export default function WorkoutDetailScreen() {
@@ -20,6 +21,8 @@ export default function WorkoutDetailScreen() {
   const [commentText, setCommentText] = useState("");
   const [posting, setPosting] = useState(false);
   const [postId, setPostId] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,11 +101,23 @@ export default function WorkoutDetailScreen() {
             <Ionicons name="chevron-back" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Workout</Text>
-          {isOwn ? (
-            <TouchableOpacity testID="delete-workout-btn" onPress={onDelete} style={styles.iconBtn}>
-              <Ionicons name="trash-outline" size={20} color={colors.danger} />
+          <View style={{ flexDirection: "row" }}>
+            <TouchableOpacity
+              testID="share-workout-btn"
+              onPress={() => {
+                setSharePayload({ kind: "workout", workout_id: String(id) });
+                setShareOpen(true);
+              }}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="paper-plane-outline" size={20} color={colors.brand} />
             </TouchableOpacity>
-          ) : <View style={{ width: 36 }} />}
+            {isOwn ? (
+              <TouchableOpacity testID="delete-workout-btn" onPress={onDelete} style={styles.iconBtn}>
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={{ paddingBottom: 80 }}>
@@ -205,6 +220,11 @@ export default function WorkoutDetailScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+      <ShareToChatSheet
+        visible={shareOpen}
+        onClose={() => setShareOpen(false)}
+        payload={sharePayload}
+      />
     </SafeAreaView>
   );
 }

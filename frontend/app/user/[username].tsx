@@ -8,6 +8,7 @@ import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
 import { Avatar } from "@/src/components/Avatar";
+import { ShareToChatSheet, SharePayload } from "@/src/components/ShareToChatSheet";
 import { fmtDuration, fmtVolume, fmtDate } from "@/src/utils/format";
 
 export default function UserProfileScreen() {
@@ -19,6 +20,8 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -142,6 +145,16 @@ export default function UserProfileScreen() {
               <TouchableOpacity testID="message-btn" style={[styles.btn, styles.followBtnFollowing]} onPress={onMessage}>
                 <Text style={styles.followTextFollowing}>Message</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                testID="share-profile-btn"
+                style={[styles.btn, styles.followBtnFollowing, { flex: 0, paddingHorizontal: 12 }]}
+                onPress={() => {
+                  setSharePayload({ kind: "profile", user_id: profile.user_id });
+                  setShareOpen(true);
+                }}
+              >
+                <Ionicons name="paper-plane-outline" size={16} color={colors.text} />
+              </TouchableOpacity>
             </View>
           ) : null}
         </View>
@@ -175,6 +188,11 @@ export default function UserProfileScreen() {
           </>
         )}
       </ScrollView>
+      <ShareToChatSheet
+        visible={shareOpen}
+        onClose={() => setShareOpen(false)}
+        payload={sharePayload}
+      />
     </SafeAreaView>
   );
 }

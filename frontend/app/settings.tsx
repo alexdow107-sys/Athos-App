@@ -59,6 +59,43 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const onDeleteAccount = () => {
+    Alert.alert(
+      "Delete account?",
+      "This permanently removes your account, workouts, posts, follows, and messages. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete forever",
+          style: "destructive",
+          onPress: () => {
+            // Second confirmation to avoid mis-taps
+            Alert.alert(
+              "Are you absolutely sure?",
+              "All your data will be gone for good.",
+              [
+                { text: "Keep my account", style: "cancel" },
+                {
+                  text: "Yes, delete everything",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await api("/users/me", { method: "DELETE" });
+                      await logout();
+                      router.replace("/auth/login");
+                    } catch (e: any) {
+                      Alert.alert("Failed", e.message || "Could not delete account.");
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="settings-screen">
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -114,13 +151,13 @@ export default function SettingsScreen() {
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleTitle}>Hide followers list</Text>
-              <Text style={styles.toggleDesc}>Others can't see who follows you</Text>
+              <Text style={styles.toggleDesc}>Others can&apos;t see who follows you</Text>
             </View>
             <Switch testID="toggle-hide-followers" value={hideFollowers} onValueChange={setHideFollowers} trackColor={{ true: colors.brand, false: colors.border }} />
           </View>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.toggleTitle}>Show "Currently Working Out"</Text>
+              <Text style={styles.toggleTitle}>Show &quot;Currently Working Out&quot;</Text>
               <Text style={styles.toggleDesc}>Display live status on your profile</Text>
             </View>
             <Switch testID="toggle-show-status" value={showStatus} onValueChange={setShowStatus} trackColor={{ true: colors.brand, false: colors.border }} />
@@ -140,6 +177,23 @@ export default function SettingsScreen() {
           <View style={{ marginTop: spacing.xl }}>
             <Button testID="logout-btn" title="Sign out" variant="ghost" onPress={onLogout} />
           </View>
+
+          <Text style={styles.section}>Danger zone</Text>
+          <TouchableOpacity
+            testID="delete-account-btn"
+            onPress={onDeleteAccount}
+            style={styles.dangerBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash" size={18} color={colors.danger} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dangerTitle}>Delete account</Text>
+              <Text style={styles.dangerDesc}>
+                Permanently delete your account and all data
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.danger} />
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -164,4 +218,11 @@ const styles = StyleSheet.create({
   toggleDesc: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   linkRow: { flexDirection: "row", alignItems: "center", padding: spacing.md, backgroundColor: colors.bg2, borderRadius: radius.lg, gap: 10 },
   linkText: { flex: 1, color: colors.text, fontWeight: "700", fontSize: 14 },
+  dangerBtn: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: spacing.md, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FEF2F2",
+  },
+  dangerTitle: { color: colors.danger, fontWeight: "800", fontSize: 14 },
+  dangerDesc: { color: colors.danger, fontSize: 12, marginTop: 2, opacity: 0.85 },
 });

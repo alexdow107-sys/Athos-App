@@ -5,10 +5,9 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import DateTimePicker from "@react-native-community/datetimepicker";
-
 import { useAuth } from "@/src/context/AuthContext";
 import { Button } from "@/src/components/Button";
+import { DatePickerField } from "@/src/components/DatePickerField";
 import { colors, radius, spacing } from "@/src/theme";
 import { api } from "@/src/api/client";
 
@@ -31,9 +30,7 @@ export default function OnboardingScreen() {
   const [weightUnit, setWeightUnit] = useState<"kg" | "lb">("kg");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
-  const [age, setAge] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [trainingDays, setTrainingDays] = useState<number | null>(null);
   const [mainGoal, setMainGoal] = useState<string | null>(null);
   const [weightGoal, setWeightGoal] = useState<string | null>(null);
@@ -71,7 +68,7 @@ export default function OnboardingScreen() {
         } catch {}
       }
       await refresh();
-      router.replace("/auth/intro");
+      router.replace("/auth/app-tour");
     } catch (e: any) {
       setError(e.message || "Failed to save");
     } finally {
@@ -129,34 +126,14 @@ export default function OnboardingScreen() {
 
           <Text style={styles.section}>About you</Text>
           <Text style={styles.label}>Date of birth</Text>
-          <TouchableOpacity
+          <DatePickerField
             testID="onboarding-dob-btn"
-            onPress={() => setShowDatePicker(true)}
-            style={[styles.input, { justifyContent: "center" }]}
-          >
-            <Text style={{ color: dob ? colors.text : colors.textMuted, fontSize: 16 }}>
-              {dob ? dob.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "Tap to choose your birthday"}
-            </Text>
-          </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              testID="onboarding-dob-picker"
-              value={dob || new Date(2000, 0, 1)}
-              mode="date"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              maximumDate={new Date()}
-              minimumDate={new Date(1920, 0, 1)}
-              onChange={(_, d) => {
-                if (Platform.OS !== "ios") setShowDatePicker(false);
-                if (d) setDob(d);
-              }}
-            />
-          )}
-          {Platform.OS === "ios" && showDatePicker && (
-            <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.dobDone}>
-              <Text style={styles.dobDoneText}>Done</Text>
-            </TouchableOpacity>
-          )}
+            value={dob}
+            onChange={setDob}
+            placeholder="Tap to choose your birthday"
+            maximumDate={new Date()}
+            minimumDate={new Date(1920, 0, 1)}
+          />
 
           <Text style={styles.section}>Training goals</Text>
           <Text style={styles.label}>Days per week</Text>

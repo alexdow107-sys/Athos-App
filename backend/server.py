@@ -515,6 +515,40 @@ async def update_me(body: ProfileUpdateIn, current=Depends(get_current_user)):
     return {"user": public_user(u)}
 
 
+@api.delete("/users/me")
+async def delete_account(current=Depends(get_current_user)):
+    """Permanently delete the current user and all related data."""
+    uid = current["user_id"]
+    # Best-effort cascade across all collections
+    await db.workouts.delete_many({"user_id": uid})
+    await db.posts.delete_many({"user_id": uid})
+    await db.post_likes.delete_many({"user_id": uid})
+    await db.comments.delete_many({"user_id": uid})
+    # Follows where user is on either side
+    await db.follows.delete_many({"$or": [{"follower_id": uid}, {"following_id": uid}]})
+    await db.notifications.delete_many({"$or": [{"user_id": uid}, {"actor_id": uid}]})
+    # Conversations + messages for user
+    conv_ids = []
+    async for c in db.conversations.find({"participants": uid}):
+        conv_ids.append(c["conversation_id"])
+    if conv_ids:
+        await db.messages.delete_many({"conversation_id": {"$in": conv_ids}})
+        await db.conversations.delete_many({"conversation_id": {"$in": conv_ids}})
+    # Active sessions
+    await db.user_sessions.delete_many({"user_id": uid})
+    # Custom exercises owned by user
+    await db.exercises.delete_many({"user_id": uid})
+    # Subscriptions / payments (if any)
+    try:
+        await db.payment_transactions.delete_many({"user_id": uid})
+    except Exception:
+        pass
+    # Finally the user
+    await db.users.delete_one({"user_id": uid})
+    logger.info(f"[DELETE-ACCOUNT] purged {uid}")
+    return {"ok": True}
+
+
 @api.get("/users/{username}")
 async def get_user_profile(username: str, current=Depends(get_current_user_optional)):
     u = await db.users.find_one({"username": username.lower()}, {"_id": 0})
@@ -812,7 +846,6 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
         ex_dict = ex.dict()
         ex_volume = 0.0
         best_set_1rm = 0.0
-        best_set_data = None
         for s in ex_dict["sets"]:
             if not s.get("completed"):
                 continue
