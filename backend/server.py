@@ -1039,6 +1039,12 @@ async def list_comments(post_id: str, current=Depends(get_current_user_optional)
     return {"comments": out}
 
 
+@api.get("/posts/by-workout/{workout_id}")
+async def post_by_workout(workout_id: str, current=Depends(get_current_user_optional)):
+    p = await db.posts.find_one({"workout_id": workout_id}, {"_id": 0})
+    return {"post": p}
+
+
 # ===== NOTIFICATIONS =====
 async def create_notification(user_id: str, notif_type: str, actor_id: str, ref_id: Optional[str]):
     if user_id == actor_id:

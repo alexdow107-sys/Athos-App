@@ -17,18 +17,25 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const userId = user?.user_id;
+
   const load = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     try {
-      const r = await api<{ workouts: any[] }>(`/workouts/user/${user.user_id}?limit=50`);
+      const r = await api<{ workouts: any[] }>(`/workouts/user/${userId}?limit=50`);
       setWorkouts(r.workouts);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [userId]);
 
-  useFocusEffect(useCallback(() => { setLoading(true); refresh(); load(); }, [load, refresh]));
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      load();
+    }, [load]),
+  );
 
   if (!user) {
     return (
@@ -87,12 +94,10 @@ export default function ProfileScreen() {
                 <TouchableOpacity testID="edit-profile-btn" style={[styles.btn, styles.btnSecondary]} onPress={() => router.push("/settings")}>
                   <Text style={styles.btnSecondaryText}>Edit profile</Text>
                 </TouchableOpacity>
-                {!user.is_premium && (
-                  <TouchableOpacity testID="goto-premium-btn" style={[styles.btn, styles.btnPremium]} onPress={() => router.push("/subscription")}>
-                    <Ionicons name="star" size={14} color="#fff" />
-                    <Text style={styles.btnPremiumText}>  Upgrade to Premium</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity testID="share-profile-btn" style={[styles.btn, styles.btnSecondary]} onPress={() => router.push("/plan")}>
+                  <Ionicons name="sparkles-outline" size={14} color={colors.brand} />
+                  <Text style={[styles.btnSecondaryText, { color: colors.brand }]}>  My Plan</Text>
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.sectionHeader}>

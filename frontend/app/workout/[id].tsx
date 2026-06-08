@@ -25,13 +25,12 @@ export default function WorkoutDetailScreen() {
     try {
       const r = await api<any>(`/workouts/${id}`);
       setData(r);
-      // Get post for this workout from feed - we don't have direct endpoint, so this is best effort
+      // Look up post for this workout via dedicated endpoint (cheap)
       try {
-        const feed = await api<{ posts: any[] }>("/feed/explore?limit=200");
-        const p = feed.posts.find((x) => x.workout_id === id);
-        if (p) {
-          setPostId(p.post_id);
-          const c = await api<{ comments: any[] }>(`/posts/${p.post_id}/comments`);
+        const pr = await api<{ post: any }>(`/posts/by-workout/${id}`);
+        if (pr.post) {
+          setPostId(pr.post.post_id);
+          const c = await api<{ comments: any[] }>(`/posts/${pr.post.post_id}/comments`);
           setComments(c.comments);
         }
       } catch {}
