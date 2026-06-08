@@ -39,7 +39,7 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AthoUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -58,8 +58,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     (async () => {
-      await refresh();
-      setLoading(false);
+      setLoading(true);
+      try {
+        await refresh();
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [refresh]);
 

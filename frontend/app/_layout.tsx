@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { View, ActivityIndicator, StyleSheet, Platform, Linking } from "react-native";
+import { Platform, Linking } from "react-native";
 import * as ExpoLinking from "expo-linking";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
@@ -14,16 +14,13 @@ import { colors } from "@/src/theme";
 SplashScreen.preventAutoHideAsync();
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading, googleSession } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
+  const { googleSession } = useAuth();
 
   // Handle inbound auth deep link with session_id
   useEffect(() => {
     const processUrl = async (url: string | null) => {
       if (!url) return;
       try {
-        // Web: session_id may be in hash
         let sid: string | null = null;
         if (url.includes("#session_id=")) {
           sid = url.split("#session_id=")[1].split("&")[0];
@@ -51,32 +48,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [googleSession]);
 
-  useEffect(() => {
-    if (loading) return;
-    const inAuth = segments[0] === "auth";
-    const isIntro = segments[1] === "intro";
-    const isOnboarding = segments[1] === "onboarding";
-
-    if (!user && !inAuth) {
-      router.replace("/auth/login");
-    } else if (user && !user.onboarded && !isOnboarding && !isIntro) {
-      // New user → show tour first, then onboarding
-      router.replace("/auth/intro");
-    } else if (user && user.onboarded && !user.seen_welcome_tour && !isIntro) {
-      // Existing user who hasn't seen tour → show it once
-      router.replace("/auth/intro");
-    } else if (user && user.onboarded && user.seen_welcome_tour && inAuth) {
-      router.replace("/(tabs)");
-    }
-  }, [user, loading, segments, router]);
-
-  if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={colors.brand} />
-      </View>
-    );
-  }
   return <>{children}</>;
 }
 
@@ -110,7 +81,3 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
-});
