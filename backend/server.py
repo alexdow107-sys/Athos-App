@@ -1184,15 +1184,34 @@ async def start_conversation(body: StartConversationIn, current=Depends(get_curr
 
 @api.get("/conversations")
 async def list_conversations(current=Depends(get_current_user)):
-    cursor = db.conversations.find({"participants": current["user_id"]}, {"_id": 0}).sort("last_message_at", -1)
+    uid = current["user_id"]
+    cursor = db.conversations.find({"participants": uid}, {"_id": 0}).sort("last_message_at", -1)
     items = []
     async for c in cursor:
-        other_id = next((p for p in c["participants"] if p != current["user_id"]), None)
+        other_id = next((p for p in c["participants"] if p != uid), None)
         if not other_id:
             continue
         other = await db.users.find_one({"user_id": other_id}, {"_id": 0})
-        items.append({**c, "other_user": public_user(other) if other else None})
+        read_at = (c.get("read_at") or {}).get(uid)
+        msg_filter: Dict[str, Any] = {"conversation_id": c["conversation_id"], "sender_id": {"$ne": uid}}
+        if read_at:
+            msg_filter["created_at"] = {"$gt": read_at}
+        unread = await db.messages.count_documents(msg_filter)
+        items.append({**c, "other_user": public_user(other) if other else None, "unread_count": unread})
     return {"conversations": items}
+
+
+@api.get("/conversations/unread-count")
+async def conversations_unread_count(current=Depends(get_current_user)):
+    uid = current["user_id"]
+    total = 0
+    async for c in db.conversations.find({"participants": uid}):
+        read_at = (c.get("read_at") or {}).get(uid)
+        msg_filter: Dict[str, Any] = {"conversation_id": c["conversation_id"], "sender_id": {"$ne": uid}}
+        if read_at:
+            msg_filter["created_at"] = {"$gt": read_at}
+        total += await db.messages.count_documents(msg_filter)
+    return {"count": total}
 
 
 @api.get("/conversations/{conversation_id}/messages")
@@ -1202,6 +1221,11 @@ async def list_messages(conversation_id: str, current=Depends(get_current_user))
         raise HTTPException(status_code=403, detail="Forbidden")
     cursor = db.messages.find({"conversation_id": conversation_id}, {"_id": 0}).sort("created_at", 1).limit(500)
     msgs = [m async for m in cursor]
+    # Mark conversation as read for current user
+    await db.conversations.update_one(
+        {"conversation_id": conversation_id},
+        {"$set": {f"read_at.{current['user_id']}": now_utc()}},
+    )
     return {"messages": msgs}
 
 

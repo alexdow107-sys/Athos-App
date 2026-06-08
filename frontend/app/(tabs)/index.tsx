@@ -24,15 +24,15 @@ export default function FeedScreen() {
   const [tab, setTab] = useState<"following" | "explore">("following");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   const load = useCallback(async () => {
     try {
       const path = tab === "following" ? "/feed" : "/feed/explore";
       const r = await api<{ posts: Post[] }>(path);
       setPosts(r.posts);
-      const n = await api<{ count: number }>("/notifications/unread-count");
-      setUnreadCount(n.count);
+      const m = await api<{ count: number }>("/conversations/unread-count").catch(() => ({ count: 0 }));
+      setUnreadMessages(m.count);
     } catch (e: any) {
       console.warn(e?.message);
     } finally {
@@ -150,13 +150,17 @@ export default function FeedScreen() {
   return (
     <SafeAreaView style={styles.safe} testID="feed-screen" edges={["top"]}>
       <View style={styles.header}>
-        <TouchableOpacity testID="header-notifications" onPress={() => router.push("/(tabs)/notifications")} style={styles.notifBtn}>
-          <Ionicons name="notifications-outline" size={24} color={colors.text} />
-          {unreadCount > 0 && <View style={styles.notifDot} />}
+        <TouchableOpacity testID="header-coach" onPress={() => router.push("/coach")} style={styles.notifBtn}>
+          <Ionicons name="ribbon-outline" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.appName}>Athos</Text>
         <TouchableOpacity testID="header-messages" onPress={() => router.push("/chats")} style={styles.notifBtn}>
           <Ionicons name="paper-plane-outline" size={22} color={colors.text} />
+          {unreadMessages > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadMessages > 99 ? "99+" : unreadMessages}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -212,6 +216,12 @@ const styles = StyleSheet.create({
   appName: { fontSize: 24, fontWeight: "900", color: colors.brand, letterSpacing: -1 },
   notifBtn: { padding: 6, position: "relative" },
   notifDot: { position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
+  badge: {
+    position: "absolute", top: 0, right: 0,
+    backgroundColor: colors.danger, minWidth: 16, height: 16, paddingHorizontal: 4,
+    borderRadius: 8, alignItems: "center", justifyContent: "center",
+  },
+  badgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
   tabs: { flexDirection: "row", paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
   tabBtn: { paddingVertical: 10, marginRight: spacing.lg },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand },

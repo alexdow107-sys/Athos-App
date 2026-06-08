@@ -64,8 +64,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="coach"
         options={{
-          title: "Coach",
-          tabBarIcon: ({ color, focused }) => <TabIcon testID="tab-coach" name={focused ? "ribbon" : "ribbon-outline"} color={color} focused={focused} />,
+          href: null,
         }}
       />
       <Tabs.Screen
