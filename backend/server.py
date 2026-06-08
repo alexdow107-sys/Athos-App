@@ -75,11 +75,21 @@ class RegisterIn(BaseModel):
     password: str
     username: str
     display_name: str
+    phone: Optional[str] = None
 
 
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
+
+class SendOtpIn(BaseModel):
+    phone: str
+
+
+class VerifyOtpIn(BaseModel):
+    phone: str
+    code: str
 
 
 class GoogleSessionIn(BaseModel):
@@ -255,6 +265,8 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "show_workout_status": u.get("show_workout_status", True),
         "workout_status_audience": u.get("workout_status_audience", "everyone"),
         "auth_provider": u.get("auth_provider", "email"),
+        "phone": u.get("phone"),
+        "phone_verified": u.get("phone_verified", False),
         "height_unit": u.get("height_unit", "cm"),
         "weight_unit": u.get("weight_unit", "kg"),
         "height": u.get("height"),
@@ -330,6 +342,8 @@ async def register(body: RegisterIn):
         "display_name": body.display_name,
         "password_hash": pwd_ctx.hash(body.password),
         "auth_provider": "email",
+        "phone": body.phone,
+        "phone_verified": False,
         "bio": "",
         "profile_picture": None,
         "is_private": False,
@@ -450,6 +464,52 @@ async def logout(authorization: Optional[str] = Header(None)):
         token = authorization[7:]
         await db.user_sessions.delete_one({"session_token": token})
     return {"ok": True}
+
+
+# ===== PHONE OTP (mocked) =====
+import random
+
+
+@api.post("/auth/send-otp")
+async def send_otp(body: SendOtpIn):
+    """Mock SMS OTP: generate 6-digit code, store with 10-min expiry, return in dev response.
+    Replace with Twilio when ready."""
+    phone = re.sub(r"[^\d+]", "", body.phone)
+    if len(phone) < 7:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    code = f"{random.randint(0, 999999):06d}"
+    await db.otp_codes.update_one(
+        {"phone": phone},
+        {"$set": {
+            "phone": phone,
+            "code": code,
+            "expires_at": now_utc() + timedelta(minutes=10),
+            "created_at": now_utc(),
+        }},
+        upsert=True,
+    )
+    logger.info(f"[MOCK OTP] {phone} -> {code}")
+    return {"ok": True, "phone": phone, "dev_code": code, "message": "SMS sent (mocked — see dev_code)"}
+
+
+@api.post("/auth/verify-otp")
+async def verify_otp(body: VerifyOtpIn, current=Depends(get_current_user)):
+    phone = re.sub(r"[^\d+]", "", body.phone)
+    rec = await db.otp_codes.find_one({"phone": phone})
+    if not rec:
+        raise HTTPException(status_code=400, detail="No code requested for this number")
+    exp = rec.get("expires_at")
+    if exp and (exp.replace(tzinfo=timezone.utc) if exp.tzinfo is None else exp) < now_utc():
+        raise HTTPException(status_code=400, detail="Code expired")
+    if rec.get("code") != body.code:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    await db.users.update_one(
+        {"user_id": current["user_id"]},
+        {"$set": {"phone": phone, "phone_verified": True}},
+    )
+    await db.otp_codes.delete_one({"phone": phone})
+    u = await db.users.find_one({"user_id": current["user_id"]}, {"_id": 0})
+    return {"user": public_user(u)}
 
 
 # ===== ONBOARDING / PROFILE =====

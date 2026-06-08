@@ -100,14 +100,17 @@ export default function IntroScreen() {
                 <Text style={styles.heroTitle}>{s.overlayTitle}</Text>
                 <TouchableOpacity
                   testID={`intro-cta-${i}`}
-                  onPress={async () => {
-                    try { await api("/users/me/seen-tour", { method: "POST" }); await refresh(); } catch {}
-                    router.replace(s.target as any);
+                  onPress={() => {
+                    // Continue to next section instead of jumping into feature
+                    const nextIdx = i + 1;
+                    if (Platform.OS === "web" && typeof window !== "undefined") {
+                      window.scrollBy({ top: 700, behavior: "smooth" });
+                    }
                   }}
                   style={styles.heroBtn}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.heroBtnText}>{s.cta}</Text>
+                  <Text style={styles.heroBtnText}>Continue</Text>
                 </TouchableOpacity>
               </View>
             </View>

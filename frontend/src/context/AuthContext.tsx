@@ -28,7 +28,7 @@ interface AuthCtx {
   user: AthoUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; password: string; username: string; display_name: string }) => Promise<void>;
+  register: (data: { email: string; password: string; username: string; display_name: string; phone?: string }) => Promise<void>;
   googleSession: (session_id: string) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(r.user);
   };
 
-  const register = async (data: { email: string; password: string; username: string; display_name: string }) => {
+  const register = async (data: { email: string; password: string; username: string; display_name: string; phone?: string }) => {
     const r = await api<{ token: string; user: AthoUser }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),

@@ -1,17 +1,23 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Platform } from "react-native";
-import { useRouter, useRootNavigationState, Link } from "expo-router";
+import { useRouter, Link } from "expo-router";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors } from "@/src/theme";
 
 export default function Index() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const navState = useRootNavigationState();
+  const [mounted, setMounted] = useState(false);
+
+  // Mark as mounted after first paint so navigator is ready
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 100);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     if (loading) return;
-    if (!navState?.key) return;
     const target = !user
       ? "/auth/login"
       : !user.onboarded
@@ -19,16 +25,24 @@ export default function Index() {
       : !user.seen_welcome_tour
       ? "/auth/intro"
       : "/(tabs)";
-    router.replace(target as any);
-  }, [user, loading, navState?.key, router]);
+    try {
+      router.replace(target as any);
+    } catch (e) {
+      // Navigator not ready — manual buttons still work
+    }
+  }, [user, loading, mounted, router]);
 
-  // Web fallback: hard-redirect if expo-router didn't navigate within 1.2s
+  // Web fallback: hard-redirect via window.location
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
     if (loading) return;
     const t = setTimeout(() => {
       if (window.location.pathname === "/" || window.location.pathname === "") {
-        const target = !user ? "/auth/login" : (!user.onboarded || !user.seen_welcome_tour) ? "/auth/intro" : "/feed";
+        const target = !user
+          ? "/auth/login"
+          : !user.onboarded || !user.seen_welcome_tour
+          ? "/auth/intro"
+          : "/feed";
         window.location.replace(target);
       }
     }, 1500);
