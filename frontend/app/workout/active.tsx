@@ -53,7 +53,7 @@ export default function ActiveWorkoutScreen() {
     );
   }
 
-  const onFinish = async () => {
+  const onFinish = () => {
     const totalCompletedSets = active.exercises.reduce(
       (acc, ex) => acc + ex.sets.filter((s) => s.completed).length,
       0,
@@ -62,27 +62,7 @@ export default function ActiveWorkoutScreen() {
       Alert.alert("No completed sets", "Mark at least one set as complete before finishing.");
       return;
     }
-    Alert.alert("Finish workout?", `${totalCompletedSets} completed set${totalCompletedSets !== 1 ? "s" : ""}`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Finish",
-        onPress: async () => {
-          setFinishing(true);
-          try {
-            const r = await finishWorkout();
-            if (r?.prs?.length) {
-              Alert.alert("🏆 New PR!", r.prs.map((p: any) => `${p.exercise_name}: ${Math.round(p.estimated_1rm)} ${user?.weight_unit || "kg"}`).join("\n"));
-            }
-            router.back();
-            setTimeout(() => router.push("/(tabs)" as any), 50);
-          } catch (e: any) {
-            Alert.alert("Failed", e.message);
-          } finally {
-            setFinishing(false);
-          }
-        },
-      },
-    ]);
+    router.push("/workout/save" as any);
   };
 
   const onDiscard = () => {

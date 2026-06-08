@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
+import { Avatar } from "@/src/components/Avatar";
 import { Button } from "@/src/components/Button";
 import { colors, radius, spacing } from "@/src/theme";
 
@@ -15,6 +17,8 @@ export default function SettingsScreen() {
   const [displayName, setDisplayName] = useState(user?.display_name || "");
   const [username, setUsername] = useState(user?.username || "");
   const [bio, setBio] = useState(user?.bio || "");
+  const [profilePicture, setProfilePicture] = useState<string | null>(user?.profile_picture || null);
+  const [pickingPhoto, setPickingPhoto] = useState(false);
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft_in">((user?.height_unit as any) || "cm");
   const [weightUnit, setWeightUnit] = useState<"kg" | "lb">((user?.weight_unit as any) || "kg");
   const [height, setHeight] = useState(String(user?.height || ""));
@@ -23,6 +27,60 @@ export default function SettingsScreen() {
   const [hideFollowers, setHideFollowers] = useState(!!user?.hide_followers);
   const [showStatus, setShowStatus] = useState(user?.show_workout_status !== false);
   const [saving, setSaving] = useState(false);
+
+  const onPickAvatar = async () => {
+    setPickingPhoto(true);
+    try {
+      if (Platform.OS !== "web") {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert("Permission needed", "We need photo access to set your profile picture.");
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.6,
+        base64: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      const dataUri = asset.base64
+        ? `data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}`
+        : asset.uri;
+      setProfilePicture(dataUri);
+      // Save immediately so it's reflected everywhere
+      try {
+        await api("/users/me", { method: "PATCH", body: JSON.stringify({ profile_picture: dataUri }) });
+        await refresh();
+      } catch (e: any) {
+        Alert.alert("Upload failed", e?.message || "Try again");
+      }
+    } catch (e: any) {
+      Alert.alert("Could not pick image", e?.message || "Try again");
+    } finally {
+      setPickingPhoto(false);
+    }
+  };
+
+  const onRemoveAvatar = () => {
+    Alert.alert("Remove profile picture?", "", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          setProfilePicture(null);
+          try {
+            await api("/users/me", { method: "PATCH", body: JSON.stringify({ profile_picture: null }) });
+            await refresh();
+          } catch {}
+        },
+      },
+    ]);
+  };
 
   const onSave = async () => {
     setSaving(true);
@@ -109,6 +167,33 @@ export default function SettingsScreen() {
 
         <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
           <Text style={styles.section}>Profile</Text>
+
+          <View style={styles.avatarBlock}>
+            <TouchableOpacity onPress={onPickAvatar} disabled={pickingPhoto} activeOpacity={0.7} testID="settings-avatar-btn">
+              <View>
+                <Avatar uri={profilePicture} name={displayName || user?.display_name} size={92} />
+                <View style={styles.avatarBadge}>
+                  {pickingPhoto ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: spacing.md }}>
+              <Text style={styles.avatarTitle}>Profile picture</Text>
+              <Text style={styles.avatarDesc}>
+                Tap your photo to choose a new one from your library.
+              </Text>
+              {profilePicture ? (
+                <TouchableOpacity onPress={onRemoveAvatar} style={styles.avatarRemove} testID="settings-avatar-remove">
+                  <Text style={styles.avatarRemoveText}>Remove photo</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
           <Text style={styles.label}>Display name</Text>
           <TextInput testID="settings-displayname" value={displayName} onChangeText={setDisplayName} style={styles.input} placeholderTextColor={colors.textMuted} />
           <Text style={styles.label}>Username</Text>
@@ -225,4 +310,15 @@ const styles = StyleSheet.create({
   },
   dangerTitle: { color: colors.danger, fontWeight: "800", fontSize: 14 },
   dangerDesc: { color: colors.danger, fontSize: 12, marginTop: 2, opacity: 0.85 },
+
+  avatarBlock: { flexDirection: "row", alignItems: "center", marginBottom: spacing.lg, marginTop: spacing.sm },
+  avatarBadge: {
+    position: "absolute", bottom: 0, right: 0,
+    width: 30, height: 30, borderRadius: 15, backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: colors.bg,
+  },
+  avatarTitle: { color: colors.text, fontWeight: "800", fontSize: 15 },
+  avatarDesc: { color: colors.textMuted, fontSize: 12, marginTop: 4, lineHeight: 17 },
+  avatarRemove: { marginTop: 8, alignSelf: "flex-start" },
+  avatarRemoveText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
 });

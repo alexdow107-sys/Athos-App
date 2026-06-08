@@ -169,6 +169,9 @@ class WorkoutFinishIn(BaseModel):
     notes: Optional[str] = None
     exercises: List[ExerciseLogIn] = []
     duration_seconds: int = 0
+    caption: Optional[str] = None
+    photos: Optional[List[str]] = None  # base64 data-uris
+    visibility: str = "public"  # "public" or "private"
 
 
 class CommentIn(BaseModel):
@@ -919,6 +922,7 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
 
     # Create social post
     if exercises_clean:
+        visibility = body.visibility if body.visibility in ("public", "private") else "public"
         post_doc = {
             "post_id": gen_id("post"),
             "user_id": current["user_id"],
@@ -927,9 +931,12 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
             "duration_seconds": duration,
             "total_volume": total_volume,
             "exercise_count": len(exercises_clean),
-            "prs": prs,
+            "prs": prs if visibility == "public" else [],
             "likes_count": 0,
             "comments_count": 0,
+            "caption": (body.caption or "")[:500],
+            "photos": (body.photos or [])[:6] if visibility == "public" else [],
+            "visibility": visibility,
             "created_at": ended,
         }
         await db.posts.insert_one(post_doc)

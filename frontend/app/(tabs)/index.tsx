@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image, ScrollView, Dimensions } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,11 +10,14 @@ import { Avatar } from "@/src/components/Avatar";
 import { fmtDuration, fmtVolume, fmtRelative } from "@/src/utils/format";
 import { useAuth } from "@/src/context/AuthContext";
 
+const { width: SCREEN_W } = Dimensions.get("window");
+
 interface Post {
   post_id: string; user_id: string; workout_id: string; name: string;
   duration_seconds: number; total_volume: number; exercise_count: number;
   prs?: any[]; likes_count: number; comments_count: number; created_at: string;
   user?: any; liked: boolean; saved: boolean;
+  caption?: string; photos?: string[]; visibility?: "public" | "private";
 }
 
 export default function FeedScreen() {
@@ -65,6 +68,35 @@ export default function FeedScreen() {
 
   const renderPost = ({ item: p }: { item: Post }) => {
     const u = p.user;
+    const isPrivate = p.visibility === "private";
+
+    // PRIVATE: minimal card — only username + workout name
+    if (isPrivate) {
+      return (
+        <View testID={`post-${p.post_id}`} style={styles.privatePost}>
+          <TouchableOpacity
+            style={styles.postHeader}
+            activeOpacity={0.7}
+            onPress={() => u && router.push(`/user/${u.username}`)}
+          >
+            <Avatar uri={u?.profile_picture} name={u?.display_name} size={36} />
+            <View style={{ flex: 1, marginLeft: spacing.md }}>
+              <Text style={styles.privateUser}>@{u?.username || "user"}</Text>
+              <Text style={styles.privateMeta}>{fmtRelative(p.created_at)}</Text>
+            </View>
+            <View style={styles.privateBadge}>
+              <Ionicons name="lock-closed" size={11} color={colors.textMuted} />
+              <Text style={styles.privateBadgeText}>Private</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.privateBody}>
+            <Ionicons name="barbell" size={16} color={colors.textMuted} />
+            <Text style={styles.privateName}>{p.name}</Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View testID={`post-${p.post_id}`} style={styles.post}>
         <TouchableOpacity
@@ -95,6 +127,30 @@ export default function FeedScreen() {
           testID={`post-workout-${p.post_id}`}
         >
           <Text style={styles.workoutName}>{p.name}</Text>
+          {p.caption ? <Text style={styles.caption}>{p.caption}</Text> : null}
+
+          {p.photos && p.photos.length > 0 && (
+            <ScrollView
+              horizontal
+              pagingEnabled={p.photos.length > 1}
+              showsHorizontalScrollIndicator={false}
+              style={{ marginTop: spacing.sm, marginHorizontal: -spacing.md }}
+            >
+              {p.photos.map((src, i) => (
+                <Image
+                  key={i}
+                  source={{ uri: src }}
+                  style={{
+                    width: SCREEN_W - (p.photos!.length > 1 ? 0 : spacing.md * 2),
+                    height: 280,
+                    marginLeft: p.photos!.length > 1 ? 0 : spacing.md,
+                    backgroundColor: colors.bg2,
+                  }}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+          )}
 
           <View style={styles.statsRow}>
             <View style={styles.stat}>
@@ -228,6 +284,21 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
   tabTextActive: { color: colors.text, fontWeight: "800" },
   post: { paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  privatePost: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.bg,
+  },
+  privateUser: { color: colors.text, fontWeight: "800", fontSize: 14 },
+  privateMeta: { color: colors.textMuted, fontSize: 11, marginTop: 1 },
+  privateBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+    backgroundColor: colors.bg2,
+  },
+  privateBadgeText: { color: colors.textMuted, fontSize: 10, fontWeight: "700" },
+  privateBody: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 52, paddingBottom: 6 },
+  privateName: { color: colors.textSecondary, fontSize: 14, fontWeight: "600" },
+  caption: { color: colors.text, fontSize: 14, lineHeight: 19, marginBottom: spacing.sm },
   postHeader: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
   postUser: { fontWeight: "700", color: colors.text, fontSize: 14 },
   postMeta: { color: colors.textMuted, fontSize: 12, marginTop: 1 },

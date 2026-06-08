@@ -46,7 +46,7 @@ interface WorkoutCtx {
   restRemaining: number;
   restDuration: number;
   startWorkout: (name?: string) => Promise<ActiveWorkout>;
-  finishWorkout: () => Promise<any>;
+  finishWorkout: (extras?: { caption?: string; photos?: string[]; visibility?: "public" | "private"; name?: string }) => Promise<any>;
   cancelWorkout: () => Promise<void>;
   addExercise: (ex: { exercise_id: string; exercise_name: string; is_unilateral: boolean; machine?: string | null }) => void;
   removeExercise: (index: number) => void;
@@ -165,16 +165,19 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return w;
   };
 
-  const finishWorkout = async () => {
+  const finishWorkout = async (extras?: { caption?: string; photos?: string[]; visibility?: "public" | "private"; name?: string }) => {
     if (!active) return null;
     const durationSec = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
     const r = await api<any>(`/workouts/${active.workout_id}/finish`, {
       method: "POST",
       body: JSON.stringify({
-        name: active.name,
+        name: extras?.name || active.name,
         notes: active.notes,
         exercises: active.exercises,
         duration_seconds: durationSec,
+        caption: extras?.caption || null,
+        photos: extras?.photos || null,
+        visibility: extras?.visibility || "public",
       }),
     });
     setActive(null);
