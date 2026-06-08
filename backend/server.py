@@ -8,8 +8,8 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 
 import httpx
-import stripe
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Header, Request
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -31,8 +31,6 @@ JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_DAYS = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_DAYS", "30"))
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
-
-stripe.api_key = STRIPE_API_KEY
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -1354,7 +1352,7 @@ Keep body fields to 1-2 sentences. Be specific with numbers when relevant."""
             api_key=EMERGENT_LLM_KEY,
             session_id=f"insights-{current['user_id']}-{int(now_utc().timestamp())}",
             system_message="You are an elite strength coach providing concise, data-driven training insights. Return only valid JSON.",
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929").with_max_tokens(1024)
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
         msg = UserMessage(text=prompt)
         resp = await chat.send_message(msg)
         # Parse JSON
@@ -1407,57 +1405,81 @@ async def subscription_status(current=Depends(get_current_user)):
 
 @api.post("/subscription/checkout")
 async def create_checkout(current=Depends(get_current_user), request: Request = None):
-    """Create a Stripe Checkout Session for Atho Premium $9.99/mo."""
-    origin = "https://strength-social-3.preview.emergentagent.com"
+    """Create a Stripe Checkout Session for Atho Premium (30-day pass for $9.99)."""
+    origin_header = request.headers.get("origin") if request else None
+    origin = origin_header or "https://strength-social-3.preview.emergentagent.com"
 
-    # Ensure customer
-    customer_id = current.get("stripe_customer_id")
-    if not customer_id:
-        try:
-            customer = stripe.Customer.create(
-                email=current["email"],
-                metadata={"user_id": current["user_id"]},
-            )
-            customer_id = customer.id
-            await db.users.update_one({"user_id": current["user_id"]}, {"$set": {"stripe_customer_id": customer_id}})
-        except Exception as e:
-            logger.error(f"Stripe customer create failed: {e}")
-            raise HTTPException(status_code=500, detail="Failed to create checkout")
+    webhook_url = f"{origin}/api/subscription/webhook"
+    sc = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
 
     try:
-        session = stripe.checkout.Session.create(
-            customer=customer_id,
-            mode="subscription",
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {"name": "Atho Premium", "description": "Advanced workout analytics & AI coaching"},
-                    "unit_amount": 999,
-                    "recurring": {"interval": "month"},
-                },
-                "quantity": 1,
-            }],
+        session = await sc.create_checkout_session(CheckoutSessionRequest(
+            amount=9.99,
+            currency="usd",
             success_url=f"{origin}/subscription-success?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{origin}/subscription",
-            metadata={"user_id": current["user_id"]},
-        )
-        return {"checkout_url": session.url, "session_id": session.id}
+            metadata={"user_id": current["user_id"], "product": "atho_premium_monthly"},
+        ))
+        # Record pending transaction
+        await db.payment_transactions.insert_one({
+            "transaction_id": gen_id("tx"),
+            "session_id": session.session_id,
+            "user_id": current["user_id"],
+            "amount": 9.99,
+            "currency": "usd",
+            "status": "pending",
+            "payment_status": "unpaid",
+            "metadata": {"product": "atho_premium_monthly"},
+            "created_at": now_utc(),
+        })
+        return {"checkout_url": session.url, "session_id": session.session_id}
     except Exception as e:
         logger.error(f"Stripe checkout failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Checkout creation failed: {e}")
 
 
 @api.get("/subscription/verify")
 async def verify_checkout(session_id: str, current=Depends(get_current_user)):
+    sc = StripeCheckout(api_key=STRIPE_API_KEY)
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        if session.payment_status == "paid" or session.status == "complete":
-            await db.users.update_one(
-                {"user_id": current["user_id"]},
-                {"$set": {"is_premium": True, "stripe_subscription_status": "active"}},
-            )
-            return {"ok": True, "is_premium": True}
-        return {"ok": False, "status": session.status}
+        status_resp = await sc.get_checkout_status(session_id)
+        # Update transaction
+        update = {
+            "status": status_resp.status,
+            "payment_status": status_resp.payment_status,
+            "updated_at": now_utc(),
+        }
+        await db.payment_transactions.update_one({"session_id": session_id}, {"$set": update})
+
+        if status_resp.payment_status == "paid":
+            # Activate premium for 30 days (idempotent — only extend on first paid receipt)
+            tx = await db.payment_transactions.find_one({"session_id": session_id})
+            if tx and not tx.get("premium_granted"):
+                now_dt = now_utc()
+                u = await db.users.find_one({"user_id": current["user_id"]})
+                # Extend from later of (current period end, now)
+                current_end = u.get("stripe_period_end") if u else None
+                if current_end and isinstance(current_end, datetime):
+                    if current_end.tzinfo is None:
+                        current_end = current_end.replace(tzinfo=timezone.utc)
+                    base = max(current_end, now_dt)
+                else:
+                    base = now_dt
+                new_end = base + timedelta(days=30)
+                await db.users.update_one(
+                    {"user_id": current["user_id"]},
+                    {"$set": {
+                        "is_premium": True,
+                        "stripe_subscription_status": "active",
+                        "stripe_period_end": new_end,
+                    }},
+                )
+                await db.payment_transactions.update_one(
+                    {"session_id": session_id},
+                    {"$set": {"premium_granted": True}},
+                )
+            return {"ok": True, "is_premium": True, "status": status_resp.status, "payment_status": status_resp.payment_status}
+        return {"ok": False, "is_premium": False, "status": status_resp.status, "payment_status": status_resp.payment_status}
     except Exception as e:
         logger.error(f"Stripe verify failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -1465,42 +1487,39 @@ async def verify_checkout(session_id: str, current=Depends(get_current_user)):
 
 @api.post("/subscription/cancel")
 async def cancel_subscription(current=Depends(get_current_user)):
-    """For MVP - just flips premium off. Real impl would cancel via Stripe."""
+    """Cancel: flip premium off immediately (since this is a 30-day pass model)."""
     await db.users.update_one(
         {"user_id": current["user_id"]},
-        {"$set": {"is_premium": False, "stripe_subscription_status": "canceled"}},
+        {"$set": {"is_premium": False, "stripe_subscription_status": "canceled", "stripe_period_end": None}},
     )
     return {"ok": True}
 
 
 @api.post("/subscription/webhook")
 async def stripe_webhook(request: Request):
-    """Webhook handler (verifies via Stripe-Signature if secret is configured)."""
+    """Handle Stripe webhooks for payment completion (via emergent wrapper)."""
     payload = await request.body()
+    signature = request.headers.get("Stripe-Signature")
+    sc = StripeCheckout(api_key=STRIPE_API_KEY)
     try:
-        event = stripe.Event.construct_from(
-            __import__("json").loads(payload), stripe.api_key
-        )
+        event = await sc.handle_webhook(payload, signature)
     except Exception as e:
         logger.error(f"Webhook parse failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid payload")
 
-    event_type = event["type"]
-    obj = event["data"]["object"]
-
-    if event_type == "checkout.session.completed":
-        customer_id = obj.get("customer")
-        if customer_id:
+    # event.event_type ~ "checkout.session.completed", event.session_id, event.payment_status
+    if getattr(event, "payment_status", None) == "paid" and getattr(event, "session_id", None):
+        tx = await db.payment_transactions.find_one({"session_id": event.session_id})
+        if tx and not tx.get("premium_granted"):
+            now_dt = now_utc()
+            new_end = now_dt + timedelta(days=30)
             await db.users.update_one(
-                {"stripe_customer_id": customer_id},
-                {"$set": {"is_premium": True, "stripe_subscription_status": "active"}},
+                {"user_id": tx["user_id"]},
+                {"$set": {"is_premium": True, "stripe_subscription_status": "active", "stripe_period_end": new_end}},
             )
-    elif event_type in ("customer.subscription.deleted",):
-        customer_id = obj.get("customer")
-        if customer_id:
-            await db.users.update_one(
-                {"stripe_customer_id": customer_id},
-                {"$set": {"is_premium": False, "stripe_subscription_status": "canceled"}},
+            await db.payment_transactions.update_one(
+                {"session_id": event.session_id},
+                {"$set": {"premium_granted": True, "status": "complete", "payment_status": "paid"}},
             )
     return {"received": True}
 
