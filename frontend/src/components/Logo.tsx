@@ -2,7 +2,7 @@ import React from "react";
 import { Image, StyleSheet, View, Text } from "react-native";
 import { colors } from "@/src/theme";
 
-const LOGO = require("../../assets/images/athos-logo.webp");
+const LOGO = require("../../assets/images/athos-logo.png");
 
 interface Props {
   size?: number;
