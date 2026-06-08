@@ -75,7 +75,6 @@ class RegisterIn(BaseModel):
     password: str
     username: str
     display_name: str
-    phone: Optional[str] = None
 
 
 class LoginIn(BaseModel):
@@ -83,17 +82,13 @@ class LoginIn(BaseModel):
     password: str
 
 
-class SendOtpIn(BaseModel):
-    phone: str
-
-
-class VerifyOtpIn(BaseModel):
-    phone: str
-    code: str
-
-
 class GoogleSessionIn(BaseModel):
     session_id: str
+
+
+class GoogleCompleteSetupIn(BaseModel):
+    username: str
+    password: str
 
 
 class OnboardIn(BaseModel):
@@ -265,8 +260,7 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "show_workout_status": u.get("show_workout_status", True),
         "workout_status_audience": u.get("workout_status_audience", "everyone"),
         "auth_provider": u.get("auth_provider", "email"),
-        "phone": u.get("phone"),
-        "phone_verified": u.get("phone_verified", False),
+        "needs_setup": u.get("needs_setup", False),
         "height_unit": u.get("height_unit", "cm"),
         "weight_unit": u.get("weight_unit", "kg"),
         "height": u.get("height"),
@@ -342,8 +336,7 @@ async def register(body: RegisterIn):
         "display_name": body.display_name,
         "password_hash": pwd_ctx.hash(body.password),
         "auth_provider": "email",
-        "phone": body.phone,
-        "phone_verified": False,
+        "needs_setup": False,
         "bio": "",
         "profile_picture": None,
         "is_private": False,
@@ -420,6 +413,7 @@ async def google_session(body: GoogleSessionIn):
             "display_name": name or username,
             "password_hash": None,
             "auth_provider": "google",
+            "needs_setup": True,
             "bio": "",
             "profile_picture": picture,
             "is_private": False,
@@ -466,48 +460,30 @@ async def logout(authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
-# ===== PHONE OTP (mocked) =====
-import random
-
-
-@api.post("/auth/send-otp")
-async def send_otp(body: SendOtpIn):
-    """Mock SMS OTP: generate 6-digit code, store with 10-min expiry, return in dev response.
-    Replace with Twilio when ready."""
-    phone = re.sub(r"[^\d+]", "", body.phone)
-    if len(phone) < 7:
-        raise HTTPException(status_code=400, detail="Invalid phone number")
-    code = f"{random.randint(0, 999999):06d}"
-    await db.otp_codes.update_one(
-        {"phone": phone},
-        {"$set": {
-            "phone": phone,
-            "code": code,
-            "expires_at": now_utc() + timedelta(minutes=10),
-            "created_at": now_utc(),
-        }},
-        upsert=True,
-    )
-    logger.info(f"[MOCK OTP] {phone} -> {code}")
-    return {"ok": True, "phone": phone, "dev_code": code, "message": "SMS sent (mocked — see dev_code)"}
-
-
-@api.post("/auth/verify-otp")
-async def verify_otp(body: VerifyOtpIn, current=Depends(get_current_user)):
-    phone = re.sub(r"[^\d+]", "", body.phone)
-    rec = await db.otp_codes.find_one({"phone": phone})
-    if not rec:
-        raise HTTPException(status_code=400, detail="No code requested for this number")
-    exp = rec.get("expires_at")
-    if exp and (exp.replace(tzinfo=timezone.utc) if exp.tzinfo is None else exp) < now_utc():
-        raise HTTPException(status_code=400, detail="Code expired")
-    if rec.get("code") != body.code:
-        raise HTTPException(status_code=400, detail="Invalid code")
+# ===== GOOGLE COMPLETE SETUP =====
+@api.post("/auth/google/complete-setup")
+async def google_complete_setup(body: GoogleCompleteSetupIn, current=Depends(get_current_user)):
+    """For new Google users — set a password and choose a username."""
+    if not current.get("needs_setup"):
+        # Allow noop if already set up
+        return {"user": public_user(current)}
+    username = body.username.strip().lower()
+    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
+        raise HTTPException(status_code=400, detail="Username must be 3-20 chars, alphanumeric or underscore")
+    if len(body.password) < 8 or not re.search(r"[A-Za-z]", body.password) or not re.search(r"\d", body.password):
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters and contain letters + a number")
+    # Username uniqueness (allow current user's existing auto-generated one)
+    existing = await db.users.find_one({"username": username, "user_id": {"$ne": current["user_id"]}})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already taken")
     await db.users.update_one(
         {"user_id": current["user_id"]},
-        {"$set": {"phone": phone, "phone_verified": True}},
+        {"$set": {
+            "username": username,
+            "password_hash": pwd_ctx.hash(body.password),
+            "needs_setup": False,
+        }},
     )
-    await db.otp_codes.delete_one({"phone": phone})
     u = await db.users.find_one({"user_id": current["user_id"]}, {"_id": 0})
     return {"user": public_user(u)}
 
@@ -853,7 +829,7 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
             ex_volume += vol
             if one_rm > best_set_1rm:
                 best_set_1rm = one_rm
-                best_set_data = s
+                _best_set_data = s  # noqa: F841 - retained for future PR detail
         total_volume += ex_volume
         ex_dict["volume"] = ex_volume
         exercises_clean.append(ex_dict)

@@ -20,8 +20,10 @@ export default function Index() {
     if (loading) return;
     const target = !user
       ? "/auth/login"
+      : user.needs_setup
+      ? "/auth/google-setup"
       : !user.onboarded
-      ? "/auth/intro"
+      ? "/auth/onboarding"
       : !user.seen_welcome_tour
       ? "/auth/intro"
       : "/(tabs)";
@@ -40,7 +42,11 @@ export default function Index() {
       if (window.location.pathname === "/" || window.location.pathname === "") {
         const target = !user
           ? "/auth/login"
-          : !user.onboarded || !user.seen_welcome_tour
+          : user.needs_setup
+          ? "/auth/google-setup"
+          : !user.onboarded
+          ? "/auth/onboarding"
+          : !user.seen_welcome_tour
           ? "/auth/intro"
           : "/feed";
         window.location.replace(target);

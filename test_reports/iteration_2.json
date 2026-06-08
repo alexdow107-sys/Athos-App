@@ -1,0 +1,42 @@
+{
+  "summary": "Validated the new phone-less auth + onboarding flow end-to-end. Backend pytest: 14/14 PASS (100%). Frontend Playwright: 7/7 PASS (100%) on mobile viewport 390x844. Backend verified: /api/auth/register returns token + user with needs_setup=false and no phone field; duplicate email/username and weak password/invalid username return 400; /api/auth/send-otp and /api/auth/verify-otp now return 404 as required; /api/auth/login works for the new user; /api/auth/google/complete-setup is a no-op (200, unchanged user) for an email-registered user where needs_setup=false, and 401 without auth; /api/users/onboard then /api/users/me/seen-tour result in user.onboarded=true and user.seen_welcome_tour=true; /api/auth/me returns no `phone` key. Frontend verified: cold-load `/` redirects to /auth/login (login-screen visible); tapping goto-signup-link reaches /auth/signup with NO phone input (no testID signup-phone-input, no placeholder with 555/+1); filling display name/username/email/password and submitting routes directly to /auth/onboarding (verify-phone screen no longer exists in the codebase or as a route); finishing onboarding lands on /auth/intro (intro-screen); intro CTAs read 'Continue' for sections 0-2 and 'Enter Athos' for the last (idx 3); intro-done-btn text is 'Enter Athos'; tapping intro-cta-0 scrolls so intro-section-1 becomes visible; tapping the final CTA navigates out of /auth/* into tabs (root '/'); logging out and re-logging-in with the same credentials lands the user directly in tabs. No new bugs introduced by this change.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "general", "issue": "Pre-existing passlib bcrypt warning at startup: 'module bcrypt has no attribute __about__'. Cosmetic; hashing works. Carried over from iteration 1."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Pre-existing React Native Web deprecation warnings: 'shadow* style props are deprecated. Use boxShadow', 'Image: style.resizeMode is deprecated. Please use props.resizeMode', 'Image: style.tintColor is deprecated. Please use props.tintColor', 'props.pointerEvents is deprecated. Use style.pointerEvents'. Web-only, no functional impact, carried over from iteration 1."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_no_phone.py",
+    "/app/test_reports/pytest/auth_no_phone.xml",
+    "/app/backend/tests/test_atho_api.py"
+  ],
+  "action_items": [
+    "Iteration 1 unresolved (NOT in scope of this review request but still open): STRIPE_API_KEY in /app/backend/.env is a placeholder 'sk_test_emergent' that Stripe rejects, so /api/subscription/checkout still returns 500.",
+    "Iteration 1 unresolved: LlmChat .with_max_tokens(1024) chain in server.py:1357 raises and silently falls back to rule-based insights.",
+    "Optional cleanup: remaining RN-Web deprecation warnings (shadow*, Image.resizeMode/tintColor, pointerEvents)."
+  ],
+  "critical_code_review_comments": [
+    "Implementation matches spec: RegisterIn no longer has a `phone` field; public_user exposes `needs_setup`; new Google users get `needs_setup: true` (server.py:416); /auth/google/complete-setup gates on `needs_setup` and short-circuits as a no-op for email users (server.py:467-469); regex/password validation mirrors /auth/register; username uniqueness check excludes current user (good).",
+    "Frontend signup.tsx no longer collects phone; routes to /auth/onboarding on success (signup.tsx:40). Root index.tsx routing precedence is correct: no user → /auth/login → needs_setup → /auth/google-setup → !onboarded → /auth/onboarding → !seen_welcome_tour → /auth/intro → /(tabs). The 1.5s window.location fallback for web works (observed redirect at ~3s of wait).",
+    "Intro CTAs render correct text per spec: 'Continue' for non-last, 'Enter Athos' for the last; intro-done-btn footer also reads 'Enter Athos'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_no_phone.py (created — 14 tests covering register / duplicate / validation / OTP-removed / login / google-complete-setup / onboard+seen-tour / me)",
+    "/app/test_reports/pytest/auth_no_phone.xml (generated)"
+  ],
+  "success_rate": {"backend": "100% (14/14 pytest)", "frontend": "100% (7/7 E2E steps PASS — cold redirect, signup no phone, post-signup → onboarding, onboarding → intro, intro CTA texts + scroll, final CTA → tabs, re-login → tabs)"},
+  "seed_data_creation": "One fresh user created per run with randomized email (e2e<rand>@athos.app) and username (e2e<rand>) for the Playwright E2E. Multiple disposable users created by pytest fixtures (u<rand>@athos.app) per run. No cleanup; users persist in atho_db.users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phone/OTP removal is fully verified. To re-run quickly: `pytest /app/backend/tests/test_auth_no_phone.py -v`. For UI re-run, use mobile viewport 390x844, register a random user via the signup form, then assert URLs progress login → signup → onboarding → intro → tabs without ever hitting /auth/verify-phone. Note: backend rejects @athos.test (deliverability check) and accepts @athos.app. Open issues from iteration 1 (Stripe checkout 500, LLM with_max_tokens) are NOT part of this review and remain unresolved.",
+  "rca_of_issue": "N/A — no defects found in this iteration's scope. All acceptance criteria of the phone-removal change pass."
+}

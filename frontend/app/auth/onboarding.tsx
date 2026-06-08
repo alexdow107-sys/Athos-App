@@ -71,7 +71,7 @@ export default function OnboardingScreen() {
         } catch {}
       }
       await refresh();
-      router.replace("/(tabs)");
+      router.replace("/auth/intro");
     } catch (e: any) {
       setError(e.message || "Failed to save");
     } finally {

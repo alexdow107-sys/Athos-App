@@ -16,23 +16,17 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async () => {
     setError(null);
-    if (!email || !password || !username || !displayName || !phone) {
-      setError("Please fill all fields including phone");
+    if (!email || !password || !username || !displayName) {
+      setError("Please fill all fields");
       return;
     }
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
       setError("Password must be at least 8 characters and contain letters + a number");
-      return;
-    }
-    const cleanPhone = phone.replace(/[^\d+]/g, "");
-    if (cleanPhone.length < 7) {
-      setError("Please enter a valid phone number (with country code, e.g. +1...)");
       return;
     }
     setLoading(true);
@@ -42,20 +36,8 @@ export default function SignupScreen() {
         password,
         username: username.trim(),
         display_name: displayName.trim(),
-        phone: cleanPhone,
       });
-      // Send OTP automatically
-      try {
-        const r = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/auth/send-otp`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: cleanPhone }),
-        });
-        const d = await r.json();
-        router.replace(`/auth/verify-phone?phone=${encodeURIComponent(cleanPhone)}&dev_code=${encodeURIComponent(d.dev_code || "")}`);
-      } catch {
-        router.replace(`/auth/verify-phone?phone=${encodeURIComponent(cleanPhone)}`);
-      }
+      router.replace("/auth/onboarding");
     } catch (e: any) {
       setError(e.message || "Signup failed");
     } finally {
@@ -113,18 +95,6 @@ export default function SignupScreen() {
             secureTextEntry
             style={styles.input}
           />
-
-          <Text style={styles.label}>Phone number</Text>
-          <TextInput
-            testID="signup-phone-input"
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="+1 555 123 4567"
-            placeholderTextColor={colors.textMuted}
-            keyboardType="phone-pad"
-            style={styles.input}
-          />
-          <Text style={[styles.muted, { marginTop: 4, fontSize: 11 }]}>We'll send a verification code via SMS</Text>
 
           {error ? <Text style={styles.error} testID="signup-error">{error}</Text> : null}
 

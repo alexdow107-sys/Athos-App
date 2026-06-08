@@ -16,6 +16,7 @@ export interface AthoUser {
   hide_followers?: boolean;
   show_workout_status?: boolean;
   auth_provider?: string;
+  needs_setup?: boolean;
   height_unit?: string;
   weight_unit?: string;
   height?: number | null;
@@ -28,8 +29,9 @@ interface AuthCtx {
   user: AthoUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; password: string; username: string; display_name: string; phone?: string }) => Promise<void>;
+  register: (data: { email: string; password: string; username: string; display_name: string }) => Promise<void>;
   googleSession: (session_id: string) => Promise<void>;
+  googleCompleteSetup: (data: { username: string; password: string }) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   setUser: (u: AthoUser | null) => void;
@@ -77,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(r.user);
   };
 
-  const register = async (data: { email: string; password: string; username: string; display_name: string; phone?: string }) => {
+  const register = async (data: { email: string; password: string; username: string; display_name: string }) => {
     const r = await api<{ token: string; user: AthoUser }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
@@ -97,6 +99,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(r.user);
   };
 
+  const googleCompleteSetup = async (data: { username: string; password: string }) => {
+    const r = await api<{ user: AthoUser }>("/auth/google/complete-setup", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    setUser(r.user);
+  };
+
   const logout = async () => {
     try {
       await api("/auth/logout", { method: "POST" });
@@ -106,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, register, googleSession, refresh, logout, setUser }}>
+    <Ctx.Provider value={{ user, loading, login, register, googleSession, googleCompleteSetup, refresh, logout, setUser }}>
       {children}
     </Ctx.Provider>
   );

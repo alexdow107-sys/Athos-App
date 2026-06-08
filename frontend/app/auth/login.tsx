@@ -28,13 +28,12 @@ export default function LoginScreen() {
       setError("Please enter email and password");
       return;
     }
-    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      // Only on signup path — login path is more lenient; only block obvious short ones
-    }
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      router.replace("/(tabs)");
+      const u = await login(email.trim(), password);
+      // login() updates context user; route based on flags
+      // We have to read fresh user; fall back to redirect to index which handles routing
+      router.replace("/");
     } catch (e: any) {
       setError(e.message || "Login failed");
     } finally {
@@ -66,7 +65,8 @@ export default function LoginScreen() {
         }
         if (sid) {
           await googleSession(sid);
-          router.replace("/(tabs)");
+          // Let index.tsx route based on needs_setup / onboarded flags
+          router.replace("/");
         } else {
           setError("Google sign-in failed");
         }
