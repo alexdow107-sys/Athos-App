@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/context/AuthContext";
 import { Button } from "@/src/components/Button";
+import { Logo } from "@/src/components/Logo";
 import { colors, radius, spacing } from "@/src/theme";
 
 export default function LoginScreen() {
@@ -26,6 +27,9 @@ export default function LoginScreen() {
     if (!email || !password) {
       setError("Please enter email and password");
       return;
+    }
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      // Only on signup path — login path is more lenient; only block obvious short ones
     }
     setLoading(true);
     try {
@@ -82,7 +86,7 @@ export default function LoginScreen() {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.headerWrap}>
-            <Text style={styles.logo}>Atho</Text>
+            <Logo size={64} />
             <Text style={styles.subtitle}>Train. Track. Triumph.</Text>
           </View>
 
@@ -141,7 +145,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <View style={styles.signupRow}>
-              <Text style={styles.signupText}>New to Atho? </Text>
+              <Text style={styles.signupText}>New to Athos? </Text>
               <Link href="/auth/signup" asChild>
                 <TouchableOpacity testID="goto-signup-link">
                   <Text style={styles.signupLink}>Create account</Text>

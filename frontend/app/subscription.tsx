@@ -73,7 +73,7 @@ export default function SubscriptionScreen() {
           <View style={styles.iconCircle}>
             <Ionicons name="star" size={32} color={colors.pr} />
           </View>
-          <Text style={styles.title}>Atho Premium</Text>
+          <Text style={styles.title}>Athos Premium</Text>
           <Text style={styles.subtitle}>Train smarter with advanced analytics</Text>
         </View>
 

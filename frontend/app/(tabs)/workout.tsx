@@ -70,6 +70,16 @@ export default function WorkoutTab() {
 
         <View style={styles.actions}>
           <TouchableOpacity
+            testID="goto-plan"
+            style={styles.actionCard}
+            onPress={() => router.push("/plan")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sparkles-outline" size={24} color={colors.brand} />
+            <Text style={styles.actionTitle}>Plan</Text>
+            <Text style={styles.actionMeta}>Coach-built weekly split</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             testID="goto-calendar"
             style={styles.actionCard}
             onPress={() => router.push("/calendar")}

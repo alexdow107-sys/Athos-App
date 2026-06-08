@@ -253,11 +253,25 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const updateSet = (i: number, si: number, updates: Partial<SetData>) =>
     update((w) => ({
       ...w,
-      exercises: w.exercises.map((e, idx) =>
-        idx === i
-          ? { ...e, sets: e.sets.map((s, sidx) => (sidx === si ? { ...s, ...updates } : s)) }
-          : e
-      ),
+      exercises: w.exercises.map((e, idx) => {
+        if (idx !== i) return e;
+        return {
+          ...e,
+          sets: e.sets.map((s, sidx) => {
+            if (sidx !== si) return s;
+            const merged = { ...s, ...updates } as SetData;
+            // Auto-mark complete when weight & reps are present (no need for manual check)
+            const hasData = e.is_unilateral
+              ? (Number(merged.left_weight) > 0 && Number(merged.left_reps) > 0) ||
+                (Number(merged.right_weight) > 0 && Number(merged.right_reps) > 0)
+              : Number(merged.weight) > 0 && Number(merged.reps) > 0;
+            if (hasData && !merged.completed && updates.completed === undefined) {
+              merged.completed = true;
+            }
+            return merged;
+          }),
+        };
+      }),
     }));
 
   const completeSet = (i: number, si: number) => {

@@ -96,6 +96,13 @@ class OnboardIn(BaseModel):
     is_private: bool = False
 
 
+class GoalsIn(BaseModel):
+    training_days_per_week: Optional[int] = None
+    main_goal: Optional[str] = None
+    weight_goal: Optional[str] = None
+    experience_level: Optional[str] = None
+
+
 class ProfileUpdateIn(BaseModel):
     display_name: Optional[str] = None
     username: Optional[str] = None
@@ -108,6 +115,12 @@ class ProfileUpdateIn(BaseModel):
     is_private: Optional[bool] = None
     hide_followers: Optional[bool] = None
     show_workout_status: Optional[bool] = None
+    workout_status_audience: Optional[str] = None  # everyone | followers | close_friends
+    close_friends: Optional[List[str]] = None
+    training_days_per_week: Optional[int] = None
+    main_goal: Optional[str] = None
+    weight_goal: Optional[str] = None
+    experience_level: Optional[str] = None
 
 
 class ExerciseCreateIn(BaseModel):
@@ -143,6 +156,7 @@ class ExerciseLogIn(BaseModel):
 class WorkoutCreateIn(BaseModel):
     name: str = "Workout"
     notes: Optional[str] = None
+    activity_type: str = "lifting"  # lifting | cardio | sports | other
 
 
 class WorkoutFinishIn(BaseModel):
@@ -235,14 +249,21 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "following_count": u.get("following_count", 0),
         "workouts_count": u.get("workouts_count", 0),
         "currently_working_out": u.get("currently_working_out", False) if u.get("show_workout_status", True) else False,
+        "active_workout_started_at": u.get("active_workout_started_at") if u.get("show_workout_status", True) and u.get("currently_working_out") else None,
+        "active_workout_activity_type": u.get("active_workout_activity_type") if u.get("show_workout_status", True) and u.get("currently_working_out") else None,
         "hide_followers": u.get("hide_followers", False),
         "show_workout_status": u.get("show_workout_status", True),
+        "workout_status_audience": u.get("workout_status_audience", "everyone"),
         "auth_provider": u.get("auth_provider", "email"),
         "height_unit": u.get("height_unit", "cm"),
         "weight_unit": u.get("weight_unit", "kg"),
         "height": u.get("height"),
         "weight": u.get("weight"),
         "onboarded": u.get("onboarded", False),
+        "training_days_per_week": u.get("training_days_per_week"),
+        "main_goal": u.get("main_goal"),
+        "weight_goal": u.get("weight_goal"),
+        "experience_level": u.get("experience_level"),
     }
 
 
@@ -291,8 +312,10 @@ async def shutdown():
 async def register(body: RegisterIn):
     if not re.match(r"^[a-zA-Z0-9_]{3,20}$", body.username):
         raise HTTPException(status_code=400, detail="Username must be 3-20 chars, alphanumeric or underscore")
-    if len(body.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if not re.search(r"[A-Za-z]", body.password) or not re.search(r"\d", body.password):
+        raise HTTPException(status_code=400, detail="Password must contain letters and at least one number")
     existing = await db.users.find_one({"$or": [{"email": body.email.lower()}, {"username": body.username.lower()}]})
     if existing:
         if existing.get("email") == body.email.lower():
@@ -709,6 +732,7 @@ async def start_workout(body: WorkoutCreateIn, current=Depends(get_current_user)
         "user_id": current["user_id"],
         "name": body.name or "Workout",
         "notes": body.notes,
+        "activity_type": body.activity_type or "lifting",
         "status": "active",
         "exercises": [],
         "started_at": now_utc(),
@@ -718,7 +742,11 @@ async def start_workout(body: WorkoutCreateIn, current=Depends(get_current_user)
         "created_at": now_utc(),
     }
     await db.workouts.insert_one(doc)
-    await db.users.update_one({"user_id": current["user_id"]}, {"$set": {"currently_working_out": True}})
+    await db.users.update_one({"user_id": current["user_id"]}, {"$set": {
+        "currently_working_out": True,
+        "active_workout_started_at": doc["started_at"],
+        "active_workout_activity_type": doc["activity_type"],
+    }})
     doc.pop("_id", None)
     return {"workout": doc}
 
@@ -811,7 +839,11 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
     }
     await db.workouts.update_one({"workout_id": workout_id}, {"$set": update})
     await db.users.update_one({"user_id": current["user_id"]}, {
-        "$set": {"currently_working_out": False},
+        "$set": {
+            "currently_working_out": False,
+            "active_workout_started_at": None,
+            "active_workout_activity_type": None,
+        },
         "$inc": {"workouts_count": 1},
     })
 
@@ -1125,7 +1157,9 @@ async def send_message(conversation_id: str, body: MessageIn, current=Depends(ge
 # ===== ANALYTICS (rule-based) =====
 @api.get("/analytics/overview")
 async def analytics_overview(current=Depends(get_current_user)):
-    """Volume by week, workout frequency, top exercises."""
+    """FREE: total workouts, duration, weekly count, muscle group volume distribution.
+    PREMIUM: total volume, weekly volume trend, top exercises ranked, exercise-level strength data."""
+    is_prem = bool(current.get("is_premium"))
     cutoff = now_utc() - timedelta(weeks=12)
     cursor = db.workouts.find({"user_id": current["user_id"], "status": "completed", "started_at": {"$gte": cutoff}})
     weekly_volume: Dict[str, float] = {}
@@ -1164,19 +1198,37 @@ async def analytics_overview(current=Depends(get_current_user)):
                 muscle_volume[mg] = muscle_volume.get(mg, 0) + vol
 
     weeks_sorted = sorted(weekly_volume.keys())
-    return {
+    base = {
         "total_workouts": total_workouts,
         "total_duration_seconds": total_duration,
+        "weekly_workouts": [{"week": k, "workouts": weekly_count.get(k, 0)} for k in weeks_sorted],
+        "muscle_volume": [{"muscle": k, "volume": v} for k, v in sorted(muscle_volume.items(), key=lambda x: -x[1])],
+        "is_premium": is_prem,
+    }
+    if not is_prem:
+        # Lock premium fields with null placeholders so client can show paywall
+        base.update({
+            "total_volume": None,
+            "weekly_volume": None,
+            "top_exercises": None,
+            "premium_locked": [
+                "total_volume", "weekly_volume", "top_exercises", "strength_trend", "exercise_analytics",
+            ],
+        })
+        return base
+    base.update({
         "total_volume": total_volume,
         "weekly_volume": [{"week": k, "volume": weekly_volume[k], "workouts": weekly_count.get(k, 0)} for k in weeks_sorted],
-        "muscle_volume": [{"muscle": k, "volume": v} for k, v in sorted(muscle_volume.items(), key=lambda x: -x[1])],
         "top_exercises": sorted(exercise_volume.values(), key=lambda x: -x["volume"])[:10],
-    }
+    })
+    return base
 
 
 @api.get("/analytics/exercise/{exercise_id}")
 async def exercise_analytics(exercise_id: str, current=Depends(get_current_user)):
-    """1RM trend, plateau detection, imbalance for one exercise."""
+    """Premium-only: 1RM trend, plateau detection, imbalance for one exercise."""
+    if not current.get("is_premium"):
+        raise HTTPException(status_code=402, detail="Premium subscription required")
     cursor = db.workouts.find({
         "user_id": current["user_id"],
         "status": "completed",
@@ -1527,7 +1579,153 @@ async def stripe_webhook(request: Request):
 # ===== HEALTH =====
 @api.get("/")
 async def root():
-    return {"app": "Atho", "version": "1.0"}
+    return {"app": "Athos", "version": "1.1"}
+
+
+# ===== GOALS & COACH PLAN =====
+@api.post("/users/goals")
+async def set_goals(body: GoalsIn, current=Depends(get_current_user)):
+    update = {k: v for k, v in body.dict().items() if v is not None}
+    if update:
+        await db.users.update_one({"user_id": current["user_id"]}, {"$set": update})
+    u = await db.users.find_one({"user_id": current["user_id"]}, {"_id": 0})
+    return {"user": public_user(u)}
+
+
+# Athos in-house coaching split templates (user-provided rules)
+SPLIT_TEMPLATES = {
+    6: [
+        {
+            "name": "Push Pull Legs (PPL × 2)",
+            "schedule": ["Push", "Pull", "Legs", "Push", "Pull", "Legs", "Rest"],
+            "volume_note": "2-3 sets per muscle group per workout. One rest day mid-week is okay.",
+        },
+        {
+            "name": "Upper / Lower (6×)",
+            "schedule": ["Upper", "Lower", "Upper", "Lower", "Upper", "Lower", "Rest (Sun)"],
+            "volume_note": "Lower per-session volume: arms 1-2 sets, back & chest 3 sets, hamstrings 3, quads 3, glutes/adductors 2 sets mix.",
+        },
+    ],
+    5: [{
+        "name": "PPL + Upper / Lower",
+        "schedule": ["Push", "Pull", "Legs", "Rest", "Upper", "Lower", "Rest"],
+        "volume_note": "2-3 sets per muscle on PPL days; Upper/Lower acts as a higher-volume finisher week.",
+    }],
+    4: [{
+        "name": "Upper / Lower (4×)",
+        "schedule": ["Upper", "Lower", "Rest", "Upper", "Lower", "Rest", "Rest"],
+        "volume_note": "3-4 sets per muscle group per session. Use rest days for cardio if desired.",
+    }],
+    3: [{
+        "name": "Upper / Lower / Full Body",
+        "schedule": ["Upper", "Rest", "Lower", "Rest", "Rest", "Full Body", "Rest"],
+        "volume_note": "Higher volume sessions: 4-5 working sets per muscle group.",
+    }],
+    2: [{
+        "name": "Full Body × 2",
+        "schedule": ["Full Body", "Rest", "Rest", "Full Body", "Rest", "Rest", "Rest"],
+        "volume_note": "Compound-focused full-body sessions, 3-4 sets per movement.",
+    }],
+}
+
+
+@api.post("/coach/plan")
+async def generate_coach_plan(current=Depends(get_current_user)):
+    """Generate a training plan from the user's goals.
+    FREE: returns Athos in-house split template based on training_days_per_week.
+    PREMIUM: also calls Claude to enrich the plan with personalized weekly schedule,
+    volume targets, and exercise picks, also factoring in any recent workout notes.
+    """
+    days = current.get("training_days_per_week")
+    goal = current.get("main_goal") or "hypertrophy"
+    weight_goal = current.get("weight_goal") or "maintain"
+
+    if not days:
+        raise HTTPException(status_code=400, detail="Set your training frequency first")
+
+    templates = SPLIT_TEMPLATES.get(int(days), SPLIT_TEMPLATES[3])
+    plan = {
+        "days_per_week": days,
+        "main_goal": goal,
+        "weight_goal": weight_goal,
+        "templates": templates,
+        "ai_enriched": False,
+        "ai_summary": None,
+        "ai_weekly_plan": None,
+    }
+
+    if current.get("is_premium"):
+        # Pull last 4 weeks of workout notes to feed AI context
+        cutoff = now_utc() - timedelta(weeks=4)
+        notes_lines: List[str] = []
+        async for w in db.workouts.find({
+            "user_id": current["user_id"],
+            "status": "completed",
+            "started_at": {"$gte": cutoff},
+        }, {"_id": 0, "name": 1, "notes": 1, "exercises.exercise_name": 1, "exercises.notes": 1}):
+            if w.get("notes"):
+                notes_lines.append(f"- Session '{w.get('name')}': {w['notes']}")
+            for ex in (w.get("exercises") or []):
+                if ex.get("notes"):
+                    notes_lines.append(f"  · {ex.get('exercise_name')}: {ex['notes']}")
+        notes_text = "\n".join(notes_lines[:30]) if notes_lines else "(no recent workout notes)"
+
+        rules = (
+            "Athos coaching rules:\n"
+            "- 6 days/week PPL: 2-3 sets/muscle/workout with one rest day in the week.\n"
+            "- 6 days/week U/L: lower volume — arms 1-2 sets, back & chest 3 sets, hamstrings 3, quads 3, "
+            "glutes/adductors 2 sets mix; rest Sundays.\n"
+            "- 5 days/week: PPL → Rest → UL → Rest, repeat.\n"
+            "- 4 days/week: UL Rest UL Rest Rest.\n"
+            "- 3 days/week: U Rest L Rest Rest FullBody Rest.\n"
+            "- 2 days/week: Full Body twice with rests wherever.\n"
+            "- For weight loss: keep lifting volume, add 2-3 cardio sessions (zone 2) on rest days.\n"
+            "- For weight gain: focus on progressive overload, prioritize compounds, 8-12 rep range for hypertrophy.\n"
+        )
+
+        prompt = (
+            f"You are an elite strength coach for Athos. Build a 7-day plan for an athlete training {days}× per week, "
+            f"main goal: {goal}, weight goal: {weight_goal}.\n\n"
+            f"{rules}\n"
+            f"Recent training notes from this athlete (use to personalize):\n{notes_text}\n\n"
+            "Return ONLY JSON with shape:\n"
+            "{\"summary\": \"2-3 sentence overview\", \"weekly_plan\": [{\"day\":\"Mon\",\"focus\":\"Push\",\"exercises\":[{\"name\":\"...\",\"sets\":3,\"reps\":\"8-10\",\"note\":\"...\"}]}]}\n"
+            "Pick from common gym exercises. Be specific. Tailor to notes if relevant."
+        )
+
+        try:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            import json as _json
+            chat = LlmChat(
+                api_key=EMERGENT_LLM_KEY,
+                session_id=f"coach-plan-{current['user_id']}-{int(now_utc().timestamp())}",
+                system_message="You are an elite strength coach. Output strict JSON only.",
+            ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+            resp = await chat.send_message(UserMessage(text=prompt))
+            txt = resp.strip()
+            if txt.startswith("```"):
+                txt = re.sub(r"^```(?:json)?\s*", "", txt)
+                txt = re.sub(r"\s*```$", "", txt)
+            parsed = _json.loads(txt)
+            plan["ai_summary"] = parsed.get("summary")
+            plan["ai_weekly_plan"] = parsed.get("weekly_plan")
+            plan["ai_enriched"] = True
+        except Exception as e:
+            logger.error(f"Coach AI plan failed: {e}")
+
+    # Persist latest plan
+    await db.coach_plans.update_one(
+        {"user_id": current["user_id"]},
+        {"$set": {**plan, "user_id": current["user_id"], "updated_at": now_utc()}},
+        upsert=True,
+    )
+    return {"plan": plan}
+
+
+@api.get("/coach/plan")
+async def get_coach_plan(current=Depends(get_current_user)):
+    doc = await db.coach_plans.find_one({"user_id": current["user_id"]}, {"_id": 0})
+    return {"plan": doc}
 
 
 app.include_router(api)

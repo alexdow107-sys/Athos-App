@@ -56,12 +56,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inAuth = segments[0] === "auth";
     if (!user && !inAuth) {
       router.replace("/auth/login");
-    } else if (user && !user.onboarded && segments[1] !== "onboarding" && !inAuth) {
-      router.replace("/auth/onboarding");
+    } else if (user && !user.onboarded && segments[1] !== "onboarding" && segments[1] !== "intro" && !inAuth) {
+      router.replace("/auth/intro");
     } else if (user && user.onboarded && inAuth) {
       router.replace("/(tabs)");
-    } else if (user && !user.onboarded && inAuth && segments[1] !== "onboarding") {
-      router.replace("/auth/onboarding");
+    } else if (user && !user.onboarded && inAuth && segments[1] !== "onboarding" && segments[1] !== "intro") {
+      router.replace("/auth/intro");
     }
   }, [user, loading, segments, router]);
 

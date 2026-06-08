@@ -5,7 +5,7 @@ import { colors } from "@/src/theme";
 export default function Index() {
   return (
     <View style={styles.container}>
-      <Text style={styles.logo}>Atho</Text>
+      <Text style={styles.logo}>Athos</Text>
       <Text style={styles.tagline}>Train. Track. Triumph.</Text>
       <ActivityIndicator color={colors.brand} style={{ marginTop: 20 }} />
     </View>

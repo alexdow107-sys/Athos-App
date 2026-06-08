@@ -33,7 +33,7 @@ export default function SignupScreen() {
         username: username.trim(),
         display_name: displayName.trim(),
       });
-      router.replace("/auth/onboarding");
+      router.replace("/auth/intro");
     } catch (e: any) {
       setError(e.message || "Signup failed");
     } finally {

@@ -241,7 +241,6 @@ const ExerciseCard: React.FC<ExCardProps> = ({
   index, ex, weightUnit, onRemove, onAddSet, onRemoveSet, onUpdateSet, onCompleteSet,
   onToggleUnilateral, onChangeMachine, onChangeRest, onStartRest, onNotes,
 }) => {
-  const [showSettings, setShowSettings] = useState(false);
   const [history, setHistory] = useState<any>(null);
 
   React.useEffect(() => {
@@ -269,55 +268,55 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             <Text style={styles.exHistory}>No previous data</Text>
           )}
         </View>
-        <TouchableOpacity testID={`ex-settings-${index}`} onPress={() => setShowSettings(!showSettings)} style={styles.iconBtn}>
-          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+        <TouchableOpacity testID={`remove-exercise-${index}`} onPress={onRemove} style={styles.iconBtn}>
+          <Ionicons name="trash-outline" size={18} color={colors.danger} />
         </TouchableOpacity>
       </View>
 
-      {showSettings && (
-        <View style={styles.settingsBox}>
-          <View style={styles.settingsRow}>
-            <Text style={styles.settingsLabel}>Unilateral (left/right)</Text>
-            <Switch
-              testID={`unilateral-toggle-${index}`}
-              value={ex.is_unilateral}
-              onValueChange={onToggleUnilateral}
-              trackColor={{ true: colors.brand, false: colors.border }}
-            />
-          </View>
-          <TouchableOpacity testID={`select-machine-${index}`} style={styles.settingsRow} onPress={onChangeMachine}>
-            <Text style={styles.settingsLabel}>Machine</Text>
-            <Text style={styles.settingsValue}>{ex.machine || "None"}</Text>
-          </TouchableOpacity>
-          <View style={styles.settingsRow}>
-            <Text style={styles.settingsLabel}>Rest (s)</Text>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {restOptions.map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  testID={`rest-${r}-${index}`}
-                  onPress={() => onChangeRest(r)}
-                  style={[styles.restChip, ex.rest_seconds === r && styles.restChipActive]}
-                >
-                  <Text style={[styles.restChipText, ex.rest_seconds === r && styles.restChipTextActive]}>{r}s</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <TextInput
-            testID={`ex-notes-${index}`}
-            placeholder="Exercise notes..."
-            value={ex.notes}
-            placeholderTextColor={colors.textMuted}
-            onChangeText={onNotes}
-            style={styles.notesInput}
-          />
-          <TouchableOpacity testID={`remove-exercise-${index}`} style={styles.removeExBtn} onPress={onRemove}>
-            <Ionicons name="trash-outline" size={16} color={colors.danger} />
-            <Text style={styles.removeExText}>Remove exercise</Text>
-          </TouchableOpacity>
+      {/* Always-visible quick settings */}
+      <View style={styles.quickSettings}>
+        <TouchableOpacity
+          testID={`unilateral-toggle-${index}`}
+          onPress={() => onToggleUnilateral(!ex.is_unilateral)}
+          style={[styles.quickChip, ex.is_unilateral && styles.quickChipActive]}
+        >
+          <Ionicons name="git-compare-outline" size={13} color={ex.is_unilateral ? "#fff" : colors.textSecondary} />
+          <Text style={[styles.quickChipText, ex.is_unilateral && { color: "#fff" }]}>L / R</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          testID={`select-machine-${index}`}
+          onPress={onChangeMachine}
+          style={[styles.quickChip, !!ex.machine && styles.quickChipActive]}
+        >
+          <Ionicons name="cube-outline" size={13} color={ex.machine ? "#fff" : colors.textSecondary} />
+          <Text style={[styles.quickChipText, ex.machine && { color: "#fff" }]} numberOfLines={1}>
+            {ex.machine || "Machine"}
+          </Text>
+        </TouchableOpacity>
+        <View style={styles.restPicker}>
+          <Ionicons name="timer-outline" size={13} color={colors.textSecondary} />
+          {restOptions.map((r) => (
+            <TouchableOpacity
+              key={r}
+              testID={`rest-${r}-${index}`}
+              onPress={() => onChangeRest(r)}
+              style={[styles.restMini, ex.rest_seconds === r && styles.restMiniActive]}
+            >
+              <Text style={[styles.restMiniText, ex.rest_seconds === r && { color: "#fff" }]}>{r}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      )}
+      </View>
+
+      <TextInput
+        testID={`ex-notes-${index}`}
+        placeholder="Notes about this exercise (form cues, machine seat #, etc.)"
+        value={ex.notes || ""}
+        placeholderTextColor={colors.textMuted}
+        onChangeText={onNotes}
+        style={styles.notesInputAlwaysOn}
+        multiline
+      />
 
       {/* Set table header */}
       <View style={styles.setHeaderRow}>
@@ -406,8 +405,9 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             onLongPress={() => onRemoveSet(si)}
             style={[styles.checkBtn, s.completed && styles.checkBtnActive]}
             activeOpacity={0.7}
+            accessibilityLabel="Long press to delete set"
           >
-            <Ionicons name="checkmark" size={18} color={s.completed ? "#fff" : colors.textMuted} />
+            <Ionicons name={s.completed ? "checkmark" : "trash-outline"} size={16} color={s.completed ? "#fff" : colors.textMuted} />
           </TouchableOpacity>
         </View>
       ))}
@@ -450,6 +450,15 @@ const styles = StyleSheet.create({
   restChipText: { color: colors.text, fontSize: 12, fontWeight: "700" },
   restChipTextActive: { color: "#fff" },
   notesInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 10, fontSize: 13, color: colors.text, marginTop: 8 },
+  notesInputAlwaysOn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 10, fontSize: 13, color: colors.text, marginTop: 8, minHeight: 40 },
+  quickSettings: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
+  quickChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.full, backgroundColor: colors.bg3, gap: 4, maxWidth: 160 },
+  quickChipActive: { backgroundColor: colors.brand },
+  quickChipText: { color: colors.textSecondary, fontSize: 11, fontWeight: "800" },
+  restPicker: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 5, borderRadius: radius.full, backgroundColor: colors.bg3, gap: 4 },
+  restMini: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.sm },
+  restMiniActive: { backgroundColor: colors.brand },
+  restMiniText: { color: colors.textSecondary, fontSize: 11, fontWeight: "800" },
   removeExBtn: { flexDirection: "row", alignItems: "center", marginTop: 12, paddingVertical: 6 },
   removeExText: { color: colors.danger, fontSize: 13, fontWeight: "700", marginLeft: 6 },
   setHeaderRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.divider },

@@ -154,7 +154,7 @@ export default function FeedScreen() {
           <Ionicons name="notifications-outline" size={24} color={colors.text} />
           {unreadCount > 0 && <View style={styles.notifDot} />}
         </TouchableOpacity>
-        <Text style={styles.appName}>Atho</Text>
+        <Text style={styles.appName}>Athos</Text>
         <TouchableOpacity testID="header-messages" onPress={() => router.push("/chats")} style={styles.notifBtn}>
           <Ionicons name="paper-plane-outline" size={22} color={colors.text} />
         </TouchableOpacity>
