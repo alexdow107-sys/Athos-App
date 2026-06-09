@@ -47,8 +47,7 @@ export default function WorkoutTab() {
           <View style={styles.activeCard} testID="active-workout-card">
             <View style={styles.liveRow}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>WORKOUT IN PROGRESS</Text>
-            </View>
+              <Text style={styles.liveText}>WORKOUT IN PROGRESS</Text>            </View>
             <Text style={styles.activeName}>{active.name}</Text>
             <Text style={styles.activeDuration}>{fmtDuration(elapsed)}</Text>
             <Text style={styles.activeMeta}>{active.exercises.length} exercise{active.exercises.length !== 1 ? "s" : ""}</Text>
@@ -67,6 +66,25 @@ export default function WorkoutTab() {
             </View>
           </View>
         )}
+
+        {/* AI plan CTA — free for everyone */}
+        <TouchableOpacity
+          testID="build-plan-cta"
+          onPress={() => router.push("/plan")}
+          style={styles.planCta}
+          activeOpacity={0.85}
+        >
+          <View style={styles.planCtaIcon}>
+            <Ionicons name="sparkles" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.planCtaTitle}>Build a plan for me</Text>
+            <Text style={styles.planCtaDesc}>
+              Answer a few questions and Athos AI builds a personalized 7-day plan tailored to your goals & schedule.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.brand} />
+        </TouchableOpacity>
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -124,4 +142,15 @@ const styles = StyleSheet.create({
   actionCard: { flex: 1, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md },
   actionTitle: { color: colors.text, fontWeight: "800", fontSize: 15, marginTop: spacing.sm },
   actionMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  planCta: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    marginTop: spacing.xl, padding: spacing.md, borderRadius: radius.lg,
+    backgroundColor: colors.brandLight, borderWidth: 1, borderColor: colors.brand,
+  },
+  planCtaIcon: {
+    width: 44, height: 44, borderRadius: 11, backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center",
+  },
+  planCtaTitle: { color: colors.text, fontWeight: "900", fontSize: 15, letterSpacing: -0.2 },
+  planCtaDesc: { color: colors.textSecondary, fontSize: 12, marginTop: 3, lineHeight: 17 },
 });

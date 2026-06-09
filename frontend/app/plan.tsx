@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
 
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
@@ -16,30 +15,21 @@ const GOAL_LABELS: Record<string, string> = {
   endurance: "Endurance", athletic: "Athletic", general: "General",
 };
 
-const PREMIUM_BENEFITS = [
-  { icon: "sparkles" as const, text: "AI-generated weekly schedule personalized to YOU" },
-  { icon: "barbell" as const, text: "Exercise picks matched to your equipment & experience" },
-  { icon: "pulse" as const, text: "Volume & rep ranges built for your session length" },
-  { icon: "trending-up" as const, text: "Plan adapts to your recent workout notes" },
-];
-
 export default function PlanScreen() {
   const router = useRouter();
-  const { user, refresh } = useAuth();
+  const { user } = useAuth();
   const [plan, setPlan] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [buying, setBuying] = useState(false);
 
   useEffect(() => {
     (async () => {
-      if (!user?.is_premium) { setLoading(false); return; }
       try {
         const p = await api<{ plan: any }>("/coach/plan");
         setPlan(p.plan);
-      } finally { setLoading(false); }
+      } catch {} finally { setLoading(false); }
     })();
-  }, [user?.is_premium]);
+  }, []);
 
   const onGenerate = async () => {
     setGenerating(true);
@@ -51,91 +41,11 @@ export default function PlanScreen() {
     } finally { setGenerating(false); }
   };
 
-  const onBuyPremium = async () => {
-    setBuying(true);
-    try {
-      const r = await api<{ checkout_url: string; session_id: string }>("/subscription/checkout", { method: "POST" });
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        window.location.href = r.checkout_url;
-        return;
-      }
-      await WebBrowser.openAuthSessionAsync(
-        r.checkout_url,
-        `${process.env.EXPO_PUBLIC_BACKEND_URL}/subscription-success`
-      );
-      try {
-        await api(`/subscription/verify?session_id=${r.session_id}`);
-        await refresh();
-      } catch {}
-    } catch (e: any) {
-      Alert.alert("Checkout unavailable", e?.message || "Try again later.");
-    } finally { setBuying(false); }
-  };
+  // === FREE FOR ALL — no paywall ===
+  // (Premium gating intentionally removed; can be re-introduced later.)
 
-  // === PAYWALL ===
-  if (!user?.is_premium) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]} testID="plan-paywall">
-        <View style={styles.header}>
-          <TouchableOpacity testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
-            <Ionicons name="chevron-back" size={26} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Plan</Text>
-          <View style={{ width: 36 }} />
-        </View>
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          <View style={styles.heroBlock}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="lock-closed" size={28} color="#fff" />
-            </View>
-            <Text style={styles.heroEyebrow}>Athos Premium</Text>
-            <Text style={styles.heroTitle}>Your personal AI coach</Text>
-            <Text style={styles.heroSub}>
-              Training plans are a Premium feature. Tell us about your goals and Athos builds a 7-day plan tailored to YOU.
-            </Text>
-            <View style={styles.priceRow}>
-              <Text style={styles.price}>$9.99</Text>
-              <Text style={styles.priceSub}>/month · cancel anytime</Text>
-            </View>
-          </View>
-
-          <View style={styles.benefits}>
-            {PREMIUM_BENEFITS.map((b) => (
-              <View key={b.text} style={styles.benefitRow}>
-                <View style={styles.benefitIcon}>
-                  <Ionicons name={b.icon} size={16} color={colors.brand} />
-                </View>
-                <Text style={styles.benefitText}>{b.text}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={{ padding: spacing.lg, gap: 10 }}>
-            <TouchableOpacity
-              testID="plan-buy-btn"
-              onPress={onBuyPremium}
-              disabled={buying}
-              style={[styles.buyBtn, buying && { opacity: 0.6 }]}
-              activeOpacity={0.85}
-            >
-              {buying ? <ActivityIndicator color="#fff" /> : (
-                <>
-                  <Ionicons name="star" size={16} color="#fff" />
-                  <Text style={styles.buyText}>Get Athos Premium</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <Text style={styles.fineprint}>
-              After subscribing, you&apos;ll answer a few questions about your training so we can build the perfect plan.
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // === NEEDS QUESTIONNAIRE (premium but hasn't filled it out) ===
-  if (!user.plan_preferences) {
+  // === NEEDS QUESTIONNAIRE (hasn't filled it out yet) ===
+  if (!user?.plan_preferences) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]} testID="plan-needs-questionnaire">
         <View style={styles.header}>

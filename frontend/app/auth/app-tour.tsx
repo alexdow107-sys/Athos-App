@@ -1,11 +1,12 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "@/src/context/AuthContext";
-import { Logo, LogoMark } from "@/src/components/Logo";
+import { LogoMark } from "@/src/components/Logo";
+import { api } from "@/src/api/client";
 import { colors, radius, spacing } from "@/src/theme";
 
 const FEATURES = [
@@ -33,7 +34,17 @@ const FEATURES = [
 
 export default function AppTourScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
+  const [finishing, setFinishing] = useState(false);
+
+  const onContinue = async () => {
+    setFinishing(true);
+    try {
+      await api("/users/me/seen-tour", { method: "POST" });
+      await refresh();
+    } catch {}
+    router.replace("/(tabs)" as any);
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="app-tour-screen">
@@ -65,12 +76,19 @@ export default function AppTourScreen() {
       <View style={styles.footer}>
         <TouchableOpacity
           testID="app-tour-continue-btn"
-          onPress={() => router.replace("/auth/premium-pitch")}
-          style={styles.cta}
+          onPress={onContinue}
+          disabled={finishing}
+          style={[styles.cta, finishing && { opacity: 0.6 }]}
           activeOpacity={0.85}
         >
-          <Text style={styles.ctaText}>Continue</Text>
-          <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+          {finishing ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Text style={styles.ctaText}>Enter Athos</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>

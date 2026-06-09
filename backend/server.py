@@ -1746,10 +1746,7 @@ SPLIT_TEMPLATES = {
 
 @api.post("/coach/plan")
 async def generate_coach_plan(current=Depends(get_current_user)):
-    """Generate a personalized AI training plan. Premium only."""
-    if not current.get("is_premium"):
-        raise HTTPException(status_code=403, detail="Athos Premium required to generate training plans.")
-
+    """Generate a personalized AI training plan. Free for all users."""
     prefs = current.get("plan_preferences") or {}
     days = int(prefs.get("days_per_week") or current.get("training_days_per_week") or 3)
     goal = prefs.get("primary_goal") or current.get("main_goal") or "hypertrophy"
