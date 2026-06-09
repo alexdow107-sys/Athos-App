@@ -126,6 +126,7 @@ class ProfileUpdateIn(BaseModel):
     main_goal: Optional[str] = None
     weight_goal: Optional[str] = None
     experience_level: Optional[str] = None
+    plan_preferences: Optional[Dict[str, Any]] = None
 
 
 class ExerciseCreateIn(BaseModel):
@@ -274,6 +275,7 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "main_goal": u.get("main_goal"),
         "weight_goal": u.get("weight_goal"),
         "experience_level": u.get("experience_level"),
+        "plan_preferences": u.get("plan_preferences"),
     }
 
 
@@ -1744,87 +1746,89 @@ SPLIT_TEMPLATES = {
 
 @api.post("/coach/plan")
 async def generate_coach_plan(current=Depends(get_current_user)):
-    """Generate a training plan from the user's goals.
-    FREE: returns Athos in-house split template based on training_days_per_week.
-    PREMIUM: also calls Claude to enrich the plan with personalized weekly schedule,
-    volume targets, and exercise picks, also factoring in any recent workout notes.
-    """
-    days = current.get("training_days_per_week")
-    goal = current.get("main_goal") or "hypertrophy"
-    weight_goal = current.get("weight_goal") or "maintain"
+    """Generate a personalized AI training plan. Premium only."""
+    if not current.get("is_premium"):
+        raise HTTPException(status_code=403, detail="Athos Premium required to generate training plans.")
 
-    if not days:
-        raise HTTPException(status_code=400, detail="Set your training frequency first")
+    prefs = current.get("plan_preferences") or {}
+    days = int(prefs.get("days_per_week") or current.get("training_days_per_week") or 3)
+    goal = prefs.get("primary_goal") or current.get("main_goal") or "hypertrophy"
+    weight_goal = prefs.get("weight_goal") or current.get("weight_goal") or "maintain"
+    duration_min = int(prefs.get("session_duration_min") or 60)
+    experience = prefs.get("experience_level") or current.get("experience_level") or "intermediate"
+    equipment = prefs.get("equipment") or "full_gym"
+    focus_areas = prefs.get("focus_areas") or []
+    injuries = prefs.get("injuries") or ""
+    extra_notes = prefs.get("extra_notes") or ""
 
-    templates = SPLIT_TEMPLATES.get(int(days), SPLIT_TEMPLATES[3])
+    templates = SPLIT_TEMPLATES.get(days, SPLIT_TEMPLATES[3])
     plan = {
         "days_per_week": days,
         "main_goal": goal,
         "weight_goal": weight_goal,
+        "session_duration_min": duration_min,
+        "experience": experience,
+        "equipment": equipment,
+        "focus_areas": focus_areas,
         "templates": templates,
         "ai_enriched": False,
         "ai_summary": None,
         "ai_weekly_plan": None,
     }
 
-    if current.get("is_premium"):
-        # Pull last 4 weeks of workout notes to feed AI context
-        cutoff = now_utc() - timedelta(weeks=4)
-        notes_lines: List[str] = []
-        async for w in db.workouts.find({
-            "user_id": current["user_id"],
-            "status": "completed",
-            "started_at": {"$gte": cutoff},
-        }, {"_id": 0, "name": 1, "notes": 1, "exercises.exercise_name": 1, "exercises.notes": 1}):
-            if w.get("notes"):
-                notes_lines.append(f"- Session '{w.get('name')}': {w['notes']}")
-            for ex in (w.get("exercises") or []):
-                if ex.get("notes"):
-                    notes_lines.append(f"  · {ex.get('exercise_name')}: {ex['notes']}")
-        notes_text = "\n".join(notes_lines[:30]) if notes_lines else "(no recent workout notes)"
+    # Pull last 4 weeks of workout notes to feed AI context
+    cutoff = now_utc() - timedelta(weeks=4)
+    notes_lines: List[str] = []
+    async for w in db.workouts.find({
+        "user_id": current["user_id"],
+        "status": "completed",
+        "started_at": {"$gte": cutoff},
+    }, {"_id": 0, "name": 1, "notes": 1, "exercises.exercise_name": 1, "exercises.notes": 1}):
+        if w.get("notes"):
+            notes_lines.append(f"- Session '{w.get('name')}': {w['notes']}")
+        for ex in (w.get("exercises") or []):
+            if ex.get("notes"):
+                notes_lines.append(f"  · {ex.get('exercise_name')}: {ex['notes']}")
+    notes_text = "\n".join(notes_lines[:30]) if notes_lines else "(no recent workout notes)"
 
-        rules = (
-            "Athos coaching rules:\n"
-            "- 6 days/week PPL: 2-3 sets/muscle/workout with one rest day in the week.\n"
-            "- 6 days/week U/L: lower volume — arms 1-2 sets, back & chest 3 sets, hamstrings 3, quads 3, "
-            "glutes/adductors 2 sets mix; rest Sundays.\n"
-            "- 5 days/week: PPL → Rest → UL → Rest, repeat.\n"
-            "- 4 days/week: UL Rest UL Rest Rest.\n"
-            "- 3 days/week: U Rest L Rest Rest FullBody Rest.\n"
-            "- 2 days/week: Full Body twice with rests wherever.\n"
-            "- For weight loss: keep lifting volume, add 2-3 cardio sessions (zone 2) on rest days.\n"
-            "- For weight gain: focus on progressive overload, prioritize compounds, 8-12 rep range for hypertrophy.\n"
-        )
+    equip_label = {"full_gym": "full gym", "home_dumbbells": "home gym with dumbbells/bands", "bodyweight": "bodyweight only"}.get(equipment, equipment)
 
-        prompt = (
-            f"You are an elite strength coach for Athos. Build a 7-day plan for an athlete training {days}× per week, "
-            f"main goal: {goal}, weight goal: {weight_goal}.\n\n"
-            f"{rules}\n"
-            f"Recent training notes from this athlete (use to personalize):\n{notes_text}\n\n"
-            "Return ONLY JSON with shape:\n"
-            "{\"summary\": \"2-3 sentence overview\", \"weekly_plan\": [{\"day\":\"Mon\",\"focus\":\"Push\",\"exercises\":[{\"name\":\"...\",\"sets\":3,\"reps\":\"8-10\",\"note\":\"...\"}]}]}\n"
-            "Pick from common gym exercises. Be specific. Tailor to notes if relevant."
-        )
+    prompt = (
+        f"You are an elite strength coach for Athos. Build a 7-day plan personalized for this athlete.\n\n"
+        f"ATHLETE PROFILE:\n"
+        f"- Trains {days}× per week, ~{duration_min} minutes per session\n"
+        f"- Experience level: {experience}\n"
+        f"- Equipment: {equip_label}\n"
+        f"- Primary goal: {goal}\n"
+        f"- Weight goal: {weight_goal}\n"
+        f"- Focus areas requested: {', '.join(focus_areas) if focus_areas else 'balanced'}\n"
+        f"- Injuries / limitations: {injuries or 'none reported'}\n"
+        f"- Additional context from athlete: {extra_notes or 'none'}\n\n"
+        f"Recent workout notes (use to refine the plan if relevant):\n{notes_text}\n\n"
+        f"Return ONLY JSON with shape:\n"
+        f'{{"summary": "2-3 sentence overview tailored to this athlete", "weekly_plan": [{{"day":"Mon","focus":"Push","exercises":[{{"name":"...","sets":3,"reps":"8-10","note":"..."}}]}}]}}\n'
+        f"Total of 7 days (include rest days as focus='Rest' with empty exercises). Make exercise picks match their equipment and experience. Volume should fit the {duration_min}-minute window."
+    )
 
-        try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
-            import json as _json
-            chat = LlmChat(
-                api_key=EMERGENT_LLM_KEY,
-                session_id=f"coach-plan-{current['user_id']}-{int(now_utc().timestamp())}",
-                system_message="You are an elite strength coach. Output strict JSON only.",
-            ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-            resp = await chat.send_message(UserMessage(text=prompt))
-            txt = resp.strip()
-            if txt.startswith("```"):
-                txt = re.sub(r"^```(?:json)?\s*", "", txt)
-                txt = re.sub(r"\s*```$", "", txt)
-            parsed = _json.loads(txt)
-            plan["ai_summary"] = parsed.get("summary")
-            plan["ai_weekly_plan"] = parsed.get("weekly_plan")
-            plan["ai_enriched"] = True
-        except Exception as e:
-            logger.error(f"Coach AI plan failed: {e}")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        import json as _json
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"coach-plan-{current['user_id']}-{int(now_utc().timestamp())}",
+            system_message="You are an elite strength coach. Output strict JSON only.",
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        resp = await chat.send_message(UserMessage(text=prompt))
+        txt = resp.strip()
+        if txt.startswith("```"):
+            txt = re.sub(r"^```(?:json)?\s*", "", txt)
+            txt = re.sub(r"\s*```$", "", txt)
+        parsed = _json.loads(txt)
+        plan["ai_summary"] = parsed.get("summary")
+        plan["ai_weekly_plan"] = parsed.get("weekly_plan")
+        plan["ai_enriched"] = True
+    except Exception as e:
+        logger.error(f"Coach AI plan failed: {e}")
 
     # Persist latest plan
     await db.coach_plans.update_one(

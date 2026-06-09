@@ -23,6 +23,11 @@ export interface AthoUser {
   weight?: number | null;
   onboarded?: boolean;
   seen_welcome_tour?: boolean;
+  training_days_per_week?: number | null;
+  main_goal?: string | null;
+  weight_goal?: string | null;
+  experience_level?: string | null;
+  plan_preferences?: any;
 }
 
 interface AuthCtx {
