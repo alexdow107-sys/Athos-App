@@ -527,7 +527,7 @@ async def delete_account(current=Depends(get_current_user)):
     # Best-effort cascade across all collections
     await db.workouts.delete_many({"user_id": uid})
     await db.posts.delete_many({"user_id": uid})
-    await db.post_likes.delete_many({"user_id": uid})
+    await db.likes.delete_many({"user_id": uid})
     await db.comments.delete_many({"user_id": uid})
     # Follows where user is on either side
     await db.follows.delete_many({"$or": [{"follower_id": uid}, {"following_id": uid}]})
@@ -554,6 +554,36 @@ async def delete_account(current=Depends(get_current_user)):
     return {"ok": True}
 
 
+@api.get("/users/search/q")
+async def search_users(q: str, current=Depends(get_current_user_optional)):
+    if not q or len(q) < 1:
+        return {"users": []}
+    pattern = re.escape(q.lower())
+    cursor = db.users.find({
+        "$or": [
+            {"username": {"$regex": pattern}},
+            {"display_name": {"$regex": pattern, "$options": "i"}},
+        ]
+    }, {"_id": 0}).limit(30)
+    users = []
+    async for u in cursor:
+        users.append(public_user(u))
+    return {"users": users}
+
+
+@api.get("/users/suggestions/list")
+async def suggested_users(current=Depends(get_current_user)):
+    already = set()
+    async for f in db.follows.find({"follower_id": current["user_id"]}):
+        already.add(f["following_id"])
+    already.add(current["user_id"])
+    cursor = db.users.find({"user_id": {"$nin": list(already)}}, {"_id": 0}).limit(20)
+    users = []
+    async for u in cursor:
+        users.append(public_user(u))
+    return {"users": users}
+
+
 @api.get("/users/{username}")
 async def get_user_profile(username: str, current=Depends(get_current_user_optional)):
     u = await db.users.find_one({"username": username.lower()}, {"_id": 0})
@@ -571,23 +601,6 @@ async def get_user_profile(username: str, current=Depends(get_current_user_optio
         profile["follow_pending"] = False
         profile["is_self"] = False
     return {"user": profile}
-
-
-@api.get("/users/search/q")
-async def search_users(q: str, current=Depends(get_current_user_optional)):
-    if not q or len(q) < 1:
-        return {"users": []}
-    pattern = re.escape(q.lower())
-    cursor = db.users.find({
-        "$or": [
-            {"username": {"$regex": pattern}},
-            {"display_name": {"$regex": pattern, "$options": "i"}},
-        ]
-    }, {"_id": 0}).limit(30)
-    users = []
-    async for u in cursor:
-        users.append(public_user(u))
-    return {"users": users}
 
 
 @api.post("/users/{user_id}/follow")
@@ -685,20 +698,6 @@ async def get_following(user_id: str, current=Depends(get_current_user_optional)
         u = await db.users.find_one({"user_id": f["following_id"]}, {"_id": 0})
         if u:
             users.append(public_user(u))
-    return {"users": users}
-
-
-@api.get("/users/suggestions/list")
-async def suggested_users(current=Depends(get_current_user)):
-    # Suggest users not already followed (simple: just random pool of others)
-    already = set()
-    async for f in db.follows.find({"follower_id": current["user_id"]}):
-        already.add(f["following_id"])
-    already.add(current["user_id"])
-    cursor = db.users.find({"user_id": {"$nin": list(already)}}, {"_id": 0}).limit(20)
-    users = []
-    async for u in cursor:
-        users.append(public_user(u))
     return {"users": users}
 
 
@@ -954,8 +953,13 @@ async def delete_workout(workout_id: str, current=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Not found")
     await db.workouts.delete_one({"workout_id": workout_id})
     await db.posts.delete_many({"workout_id": workout_id})
+    user_update: dict = {}
     if w.get("status") == "active":
-        await db.users.update_one({"user_id": current["user_id"]}, {"$set": {"currently_working_out": False}})
+        user_update["$set"] = {"currently_working_out": False}
+    if w.get("status") == "completed":
+        user_update["$inc"] = {"workouts_count": -1}
+    if user_update:
+        await db.users.update_one({"user_id": current["user_id"]}, user_update)
     return {"ok": True}
 
 
@@ -1015,7 +1019,7 @@ async def get_feed(limit: int = 30, current=Depends(get_current_user)):
 @api.get("/feed/explore")
 async def explore_feed(limit: int = 30, current=Depends(get_current_user_optional)):
     """Public posts from anyone (non-private accounts)."""
-    cursor = db.posts.find({}, {"_id": 0}).sort("created_at", -1).limit(limit * 2)
+    cursor = db.posts.find({"visibility": "public"}, {"_id": 0}).sort("created_at", -1).limit(limit * 2)
     posts = []
     async for p in cursor:
         u = await db.users.find_one({"user_id": p["user_id"]}, {"_id": 0})
