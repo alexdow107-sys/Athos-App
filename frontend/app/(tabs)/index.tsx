@@ -1,5 +1,8 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image, ScrollView, Dimensions } from "react-native";
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  RefreshControl, ActivityIndicator, Image, Dimensions, ScrollView, Alert, Platform,
+} from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,10 +10,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/api/client";
 import { colors, radius, spacing } from "@/src/theme";
 import { Avatar } from "@/src/components/Avatar";
-import { fmtDuration, fmtVolume, fmtRelative } from "@/src/utils/format";
+import { fmtDuration, fmtVolume, fmtRelative, fmtDistance } from "@/src/utils/format";
 import { useAuth } from "@/src/context/AuthContext";
 
-const { width: SCREEN_W } = Dimensions.get("window");
+const { width: SW } = Dimensions.get("window");
+
+// Feed uses a true-black surface palette
+const BLACK = "#000000";
+const CARD  = "#111111";
+const CARD2 = "#181818";
+const LINE  = "#222222";
 
 interface Post {
   post_id: string; user_id: string; workout_id: string; name: string;
@@ -20,6 +29,15 @@ interface Post {
   caption?: string; photos?: string[]; visibility?: "public" | "private";
 }
 
+function StatBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.statBlock}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
 export default function FeedScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -27,7 +45,7 @@ export default function FeedScreen() {
   const [tab, setTab] = useState<"following" | "explore">("following");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unread, setUnread] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -35,7 +53,7 @@ export default function FeedScreen() {
       const r = await api<{ posts: Post[] }>(path);
       setPosts(r.posts);
       const m = await api<{ count: number }>("/conversations/unread-count").catch(() => ({ count: 0 }));
-      setUnreadMessages(m.count);
+      setUnread(m.count);
     } catch (e: any) {
       console.warn(e?.message);
     } finally {
@@ -47,198 +65,241 @@ export default function FeedScreen() {
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
   const onLike = async (p: Post) => {
-    const newLiked = !p.liked;
-    setPosts((prev) => prev.map((x) => x.post_id === p.post_id ? { ...x, liked: newLiked, likes_count: x.likes_count + (newLiked ? 1 : -1) } : x));
+    const liked = !p.liked;
+    setPosts(prev => prev.map(x => x.post_id === p.post_id
+      ? { ...x, liked, likes_count: x.likes_count + (liked ? 1 : -1) } : x));
     try {
-      if (newLiked) await api(`/posts/${p.post_id}/like`, { method: "POST" });
+      if (liked) await api(`/posts/${p.post_id}/like`, { method: "POST" });
       else await api(`/posts/${p.post_id}/like`, { method: "DELETE" });
-    } catch {
-      load();
+    } catch { load(); }
+  };
+
+  const onDeletePost = (p: Post) => {
+    const doDelete = async () => {
+      try {
+        await api(`/workouts/${p.workout_id}`, { method: "DELETE" });
+        setPosts(prev => prev.filter(x => x.post_id !== p.post_id));
+      } catch {}
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm("Delete this workout and post? This cannot be undone.")) doDelete();
+      return;
     }
+    Alert.alert("Delete workout?", "This will delete the workout and its post. Cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: doDelete },
+    ]);
   };
 
   const onSave = async (p: Post) => {
-    const newSaved = !p.saved;
-    setPosts((prev) => prev.map((x) => x.post_id === p.post_id ? { ...x, saved: newSaved } : x));
+    const saved = !p.saved;
+    setPosts(prev => prev.map(x => x.post_id === p.post_id ? { ...x, saved } : x));
     try {
-      if (newSaved) await api(`/posts/${p.post_id}/save`, { method: "POST" });
+      if (saved) await api(`/posts/${p.post_id}/save`, { method: "POST" });
       else await api(`/posts/${p.post_id}/save`, { method: "DELETE" });
     } catch { load(); }
   };
 
+  const storyUsers = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const p of posts) {
+      if (p.user && !seen.has(p.user.user_id)) {
+        seen.add(p.user.user_id);
+        out.push(p.user);
+        if (out.length >= 10) break;
+      }
+    }
+    return out;
+  }, [posts]);
+
   const renderPost = ({ item: p }: { item: Post }) => {
     const u = p.user;
-    const isPrivate = p.visibility === "private";
+    const hasPhotos = p.photos && p.photos.length > 0;
 
-    // PRIVATE: minimal card — only username + workout name
-    if (isPrivate) {
+    if (p.visibility === "private") {
       return (
-        <View testID={`post-${p.post_id}`} style={styles.privatePost}>
-          <TouchableOpacity
-            style={styles.postHeader}
-            activeOpacity={0.7}
-            onPress={() => u && router.push(`/user/${u.username}`)}
-          >
-            <Avatar uri={u?.profile_picture} name={u?.display_name} size={36} />
-            <View style={{ flex: 1, marginLeft: spacing.md }}>
-              <Text style={styles.privateUser}>@{u?.username || "user"}</Text>
-              <Text style={styles.privateMeta}>{fmtRelative(p.created_at)}</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.postHeader} activeOpacity={0.7}
+            onPress={() => u && router.push(`/user/${u.username}`)}>
+            <View style={styles.avatarRing}>
+              <Avatar uri={u?.profile_picture} name={u?.display_name} size={40} />
             </View>
-            <View style={styles.privateBadge}>
-              <Ionicons name="lock-closed" size={11} color={colors.textMuted} />
-              <Text style={styles.privateBadgeText}>Private</Text>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.postUser}>{u?.display_name || "User"}</Text>
+              <Text style={styles.postTime}>{fmtRelative(p.created_at)}</Text>
+            </View>
+            <View style={styles.privateTag}>
+              <Ionicons name="lock-closed" size={10} color="#666" />
+              <Text style={styles.privateTagText}>Private</Text>
             </View>
           </TouchableOpacity>
           <View style={styles.privateBody}>
-            <Ionicons name="barbell" size={16} color={colors.textMuted} />
+            <Ionicons name="barbell-outline" size={13} color="#555" />
             <Text style={styles.privateName}>{p.name}</Text>
           </View>
         </View>
       );
     }
 
+    const distanceKm = (p as any).distance_km;
+    const hasDistance = distanceKm != null;
+    const weightUnit = user?.weight_unit || "kg";
+    const distUnit = (user?.distance_unit as any) || "km";
+
     return (
-      <View testID={`post-${p.post_id}`} style={styles.post}>
-        <TouchableOpacity
-          style={styles.postHeader}
-          activeOpacity={0.7}
-          onPress={() => u && router.push(`/user/${u.username}`)}
-          testID={`post-user-${p.post_id}`}
-        >
-          <Avatar uri={u?.profile_picture} name={u?.display_name} size={40} />
-          <View style={{ flex: 1, marginLeft: spacing.md }}>
-            <Text style={styles.postUser}>{u?.display_name || "User"}</Text>
-            <Text style={styles.postMeta}>
-              @{u?.username || "user"} · {fmtRelative(p.created_at)}
-              {u?.currently_working_out ? " · 🔴 Live" : ""}
-            </Text>
+      <View style={styles.card}>
+        {/* Header */}
+        <TouchableOpacity style={styles.postHeader} activeOpacity={0.8}
+          onPress={() => u && router.push(`/user/${u.username}`)}>
+          <View style={styles.avatarRing}>
+            <Avatar uri={u?.profile_picture} name={u?.display_name} size={40} />
           </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={styles.postUser}>{u?.display_name || "User"}</Text>
+              {u?.currently_working_out && (
+                <View style={styles.liveTag}>
+                  <Text style={styles.liveTagText}>LIVE</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.postTime}>{fmtRelative(p.created_at)}</Text>
+          </View>
+          {p.user_id === user?.user_id
+            ? <TouchableOpacity onPress={() => onDeletePost(p)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="trash-outline" size={18} color="#C04040" />
+              </TouchableOpacity>
+            : <Ionicons name="ellipsis-horizontal" size={18} color="#555" />
+          }
+        </TouchableOpacity>
+
+        {/* Workout name + caption */}
+        <TouchableOpacity style={styles.postBody} activeOpacity={0.8}
+          onPress={() => router.push(`/workout/${p.workout_id}`)}>
+          <Text style={styles.workoutTitle}>{p.name}</Text>
+          {p.caption ? <Text style={styles.caption}>{p.caption}</Text> : null}
           {p.prs && p.prs.length > 0 && (
             <View style={styles.prBadge}>
-              <Ionicons name="trophy" size={12} color={colors.pr} />
-              <Text style={styles.prText}>{p.prs.length} PR</Text>
+              <Ionicons name="trophy" size={12} color="#C89A3A" />
+              <Text style={styles.prBadgeText}>{p.prs.length} PR{p.prs.length > 1 ? "s" : ""}</Text>
             </View>
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => router.push(`/workout/${p.workout_id}`)}
-          testID={`post-workout-${p.post_id}`}
-        >
-          <Text style={styles.workoutName}>{p.name}</Text>
-          {p.caption ? <Text style={styles.caption}>{p.caption}</Text> : null}
-
-          {p.photos && p.photos.length > 0 && (
-            <ScrollView
-              horizontal
-              pagingEnabled={p.photos.length > 1}
-              showsHorizontalScrollIndicator={false}
-              style={{ marginTop: spacing.sm, marginHorizontal: -spacing.md }}
-            >
-              {p.photos.map((src, i) => (
-                <Image
-                  key={i}
-                  source={{ uri: src }}
-                  style={{
-                    width: SCREEN_W - (p.photos!.length > 1 ? 0 : spacing.md * 2),
-                    height: 280,
-                    marginLeft: p.photos!.length > 1 ? 0 : spacing.md,
-                    backgroundColor: colors.bg2,
-                  }}
-                  resizeMode="cover"
-                />
-              ))}
-            </ScrollView>
-          )}
-
-          <View style={styles.statsRow}>
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>DURATION</Text>
-              <Text style={styles.statValue}>{fmtDuration(p.duration_seconds)}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>VOLUME</Text>
-              <Text style={styles.statValue}>{fmtVolume(p.total_volume, user?.weight_unit || "kg")}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>EXERCISES</Text>
-              <Text style={styles.statValue}>{p.exercise_count}</Text>
-            </View>
-          </View>
-
-          {p.prs && p.prs.length > 0 && (
-            <View style={styles.prContainer}>
-              {p.prs.slice(0, 3).map((pr: any, i: number) => (
-                <View key={i} style={styles.prPill}>
-                  <Ionicons name="trophy" size={11} color={colors.pr} />
-                  <Text style={styles.prPillText}>{pr.exercise_name}: {Math.round(pr.estimated_1rm)} {user?.weight_unit || "kg"}</Text>
-                </View>
-              ))}
-            </View>
+        {/* Stats row — Strava-style: label over bold value */}
+        <TouchableOpacity style={styles.statsRow} activeOpacity={0.8}
+          onPress={() => router.push(`/workout/${p.workout_id}`)}>
+          <StatBlock label="Time" value={fmtDuration(p.duration_seconds)} />
+          {hasDistance ? (
+            <>
+              <View style={styles.statDivider} />
+              <StatBlock label="Distance" value={fmtDistance(distanceKm, distUnit)} />
+            </>
+          ) : p.exercise_count > 0 ? (
+            <>
+              <View style={styles.statDivider} />
+              <StatBlock label="Exercises" value={String(p.exercise_count)} />
+            </>
+          ) : null}
+          {p.total_volume > 0 && (
+            <>
+              <View style={styles.statDivider} />
+              <StatBlock label="Volume" value={fmtVolume(p.total_volume, weightUnit)} />
+            </>
           )}
         </TouchableOpacity>
 
+        {/* Photos — full width, edge to edge */}
+        {hasPhotos && (
+          <TouchableOpacity activeOpacity={0.93}
+            onPress={() => router.push(`/workout/${p.workout_id}`)}>
+            {p.photos!.length === 1 ? (
+              <Image
+                source={{ uri: p.photos![0] }}
+                style={styles.photoSingle}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.photoDuo}>
+                {p.photos!.slice(0, 2).map((src, i) => (
+                  <Image key={i} source={{ uri: src }} style={styles.photoDuoThumb} resizeMode="cover" />
+                ))}
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* Actions */}
         <View style={styles.actions}>
           <TouchableOpacity testID={`like-${p.post_id}`} onPress={() => onLike(p)} style={styles.actionBtn} activeOpacity={0.7}>
-            <Ionicons name={p.liked ? "heart" : "heart-outline"} size={22} color={p.liked ? colors.danger : colors.text} />
-            <Text style={styles.actionText}>{p.likes_count}</Text>
+            <Ionicons name={p.liked ? "heart" : "heart-outline"} size={23} color={p.liked ? colors.brand : "#666"} />
+            {p.likes_count > 0 && (
+              <Text style={[styles.actionCount, p.liked && { color: colors.brand }]}>{p.likes_count}</Text>
+            )}
           </TouchableOpacity>
-          <TouchableOpacity
-            testID={`comment-${p.post_id}`}
-            onPress={() => router.push(`/workout/${p.workout_id}`)}
-            style={styles.actionBtn} activeOpacity={0.7}
-          >
-            <Ionicons name="chatbubble-outline" size={20} color={colors.text} />
-            <Text style={styles.actionText}>{p.comments_count}</Text>
+          <TouchableOpacity testID={`comment-${p.post_id}`} style={styles.actionBtn} activeOpacity={0.7}
+            onPress={() => router.push(`/workout/${p.workout_id}`)}>
+            <Ionicons name="chatbubble-outline" size={21} color="#666" />
+            {p.comments_count > 0 && <Text style={styles.actionCount}>{p.comments_count}</Text>}
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           <TouchableOpacity testID={`save-${p.post_id}`} onPress={() => onSave(p)} style={styles.actionBtn} activeOpacity={0.7}>
-            <Ionicons name={p.saved ? "bookmark" : "bookmark-outline"} size={20} color={p.saved ? colors.brand : colors.text} />
+            <Ionicons name={p.saved ? "bookmark" : "bookmark-outline"} size={21}
+              color={p.saved ? colors.brand : "#666"} />
           </TouchableOpacity>
         </View>
       </View>
     );
   };
 
+  const ListHeader = () => (
+    <>
+      {storyUsers.length > 0 && (
+        <View style={styles.storiesWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesInner}>
+            {storyUsers.map((u) => (
+              <TouchableOpacity key={u.user_id} style={styles.storyItem} activeOpacity={0.8}
+                onPress={() => router.push(`/user/${u.username}`)}>
+                <View style={styles.storyRing}>
+                  <Avatar uri={u.profile_picture} name={u.display_name} size={50} />
+                </View>
+                <Text style={styles.storyName} numberOfLines={1}>{u.display_name?.split(" ")[0]}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.safe} testID="feed-screen" edges={["top"]}>
-      <View style={styles.header}>
-        <TouchableOpacity testID="header-coach" onPress={() => router.push("/coach")} style={styles.notifBtn}>
-          <Ionicons name="ribbon-outline" size={22} color={colors.text} />
-        </TouchableOpacity>
+      {/* Top bar */}
+      <View style={styles.topBar}>
         <Text style={styles.appName}>Athos</Text>
-        <TouchableOpacity testID="header-messages" onPress={() => router.push("/chats")} style={styles.notifBtn}>
-          <Ionicons name="paper-plane-outline" size={22} color={colors.text} />
-          {unreadMessages > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{unreadMessages > 99 ? "99+" : unreadMessages}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          testID="feed-tab-following"
-          onPress={() => setTab("following")}
-          style={[styles.tabBtn, tab === "following" && styles.tabActive]}
-        >
-          <Text style={[styles.tabText, tab === "following" && styles.tabTextActive]}>Following</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          testID="feed-tab-explore"
-          onPress={() => setTab("explore")}
-          style={[styles.tabBtn, tab === "explore" && styles.tabActive]}
-        >
-          <Text style={[styles.tabText, tab === "explore" && styles.tabTextActive]}>Explore</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          {(["following", "explore"] as const).map((t) => (
+            <TouchableOpacity key={t} testID={`feed-tab-${t}`} onPress={() => setTab(t)}
+              style={[styles.tabChip, tab === t && styles.tabChipActive]} activeOpacity={0.7}>
+              <Text style={[styles.tabChipText, tab === t && styles.tabChipTextActive]}>
+                {t === "following" ? "Following" : "Explore"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity testID="header-messages" onPress={() => router.push("/chats")} style={styles.iconBtn}>
+            <Ionicons name="paper-plane-outline" size={20} color="#ccc" />
+            {unread > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unread > 99 ? "99+" : unread}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
-        <View style={styles.empty}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: BLACK }}>
           <ActivityIndicator color={colors.brand} />
         </View>
       ) : (
@@ -247,17 +308,38 @@ export default function FeedScreen() {
           data={posts}
           renderItem={renderPost}
           keyExtractor={(p) => p.post_id}
-          contentContainerStyle={posts.length === 0 ? styles.empty : { paddingBottom: 24 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+          ListHeaderComponent={ListHeader}
+          contentContainerStyle={posts.length === 0 ? styles.emptyWrap : { paddingBottom: 40 }}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
+          style={{ backgroundColor: BLACK }}
+          refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.brand}
+            onRefresh={() => { setRefreshing(true); load(); }} />}
           ListEmptyComponent={
             <View style={styles.emptyContent}>
-              <Ionicons name="barbell" size={56} color={colors.textMuted} />
-              <Text style={styles.emptyTitle}>{tab === "following" ? "Your feed is empty" : "No workouts yet"}</Text>
-              <Text style={styles.emptySubtitle}>
+              <Ionicons name="barbell-outline" size={44} color="#333" />
+              <Text style={styles.emptyTitle}>
+                {tab === "following" ? "Your feed is empty" : "No workouts yet"}
+              </Text>
+              <Text style={styles.emptySub}>
                 {tab === "following"
-                  ? "Follow athletes from Discover to see their workouts here"
+                  ? "Follow athletes from Discover to see their workouts"
                   : "Be the first to log a workout"}
               </Text>
+              <TouchableOpacity
+                testID="empty-cta"
+                style={styles.emptyBtn}
+                activeOpacity={0.85}
+                onPress={() => router.push(tab === "following" ? "/(tabs)/discover" : "/(tabs)/workout")}
+              >
+                <Ionicons
+                  name={tab === "following" ? "compass-outline" : "add"}
+                  size={16}
+                  color={colors.textInverse}
+                />
+                <Text style={styles.emptyBtnText}>
+                  {tab === "following" ? "Find athletes" : "Start a workout"}
+                </Text>
+              </TouchableOpacity>
             </View>
           }
         />
@@ -267,57 +349,113 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: "space-between" },
-  appName: { fontSize: 24, fontWeight: "900", color: colors.brand, letterSpacing: -1 },
-  notifBtn: { padding: 6, position: "relative" },
-  notifDot: { position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
+  safe: { flex: 1, backgroundColor: BLACK },
+
+  topBar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.lg, paddingVertical: 10,
+    backgroundColor: BLACK, borderBottomWidth: 1, borderBottomColor: LINE,
+  },
+  appName: { fontSize: 22, fontWeight: "900", color: colors.brand, letterSpacing: -0.5 },
+  tabChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
+    backgroundColor: "transparent",
+  },
+  tabChipActive: { backgroundColor: "rgba(107,197,222,0.12)" },
+  tabChipText: { fontSize: 13, fontWeight: "600", color: "#555" },
+  tabChipTextActive: { color: colors.brand, fontWeight: "800" },
+  iconBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", marginLeft: 4 },
   badge: {
-    position: "absolute", top: 0, right: 0,
-    backgroundColor: colors.danger, minWidth: 16, height: 16, paddingHorizontal: 4,
-    borderRadius: 8, alignItems: "center", justifyContent: "center",
+    position: "absolute", top: 2, right: 2, backgroundColor: colors.brand,
+    minWidth: 14, height: 14, paddingHorizontal: 2, borderRadius: 7,
+    alignItems: "center", justifyContent: "center",
   },
-  badgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
-  tabs: { flexDirection: "row", paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
-  tabBtn: { paddingVertical: 10, marginRight: spacing.lg },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand },
-  tabText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
-  tabTextActive: { color: colors.text, fontWeight: "800" },
-  post: { paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
-  privatePost: {
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.bg,
+  badgeText: { color: "#fff", fontSize: 8, fontWeight: "900" },
+
+  storiesWrap: { backgroundColor: CARD, borderBottomWidth: 1, borderBottomColor: LINE },
+  storiesInner: { paddingHorizontal: spacing.md, paddingVertical: spacing.md, gap: spacing.md },
+  storyItem: { alignItems: "center", width: 62 },
+  storyRing: {
+    width: 58, height: 58, borderRadius: 29,
+    borderWidth: 2, borderColor: colors.brand,
+    padding: 2, marginBottom: 5,
   },
-  privateUser: { color: colors.text, fontWeight: "800", fontSize: 14 },
-  privateMeta: { color: colors.textMuted, fontSize: 11, marginTop: 1 },
-  privateBadge: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
-    backgroundColor: colors.bg2,
+  storyName: { fontSize: 11, color: "#888", fontWeight: "600", textAlign: "center" },
+
+  sep: { height: 1, backgroundColor: LINE },
+  card: { backgroundColor: CARD },
+
+  postHeader: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 10,
   },
-  privateBadgeText: { color: colors.textMuted, fontSize: 10, fontWeight: "700" },
-  privateBody: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 52, paddingBottom: 6 },
-  privateName: { color: colors.textSecondary, fontSize: 14, fontWeight: "600" },
-  caption: { color: colors.text, fontSize: 14, lineHeight: 19, marginBottom: spacing.sm },
-  postHeader: { flexDirection: "row", alignItems: "center", marginBottom: spacing.md },
-  postUser: { fontWeight: "700", color: colors.text, fontSize: 14 },
-  postMeta: { color: colors.textMuted, fontSize: 12, marginTop: 1 },
-  prBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#FEF3C7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.full },
-  prText: { color: colors.pr, fontSize: 11, fontWeight: "800", marginLeft: 4 },
-  workoutName: { fontSize: 17, fontWeight: "800", color: colors.text, marginBottom: spacing.sm },
-  statsRow: { flexDirection: "row", backgroundColor: colors.bg2, borderRadius: radius.lg, padding: spacing.md, alignItems: "center" },
-  stat: { flex: 1, alignItems: "center" },
-  statDivider: { width: 1, height: 28, backgroundColor: colors.border },
-  statLabel: { color: colors.textMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
-  statValue: { color: colors.text, fontSize: 16, fontWeight: "800", marginTop: 2 },
-  prContainer: { flexDirection: "row", flexWrap: "wrap", marginTop: spacing.sm },
-  prPill: { flexDirection: "row", alignItems: "center", backgroundColor: "#FEF3C7", paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, marginRight: 6, marginTop: 4 },
-  prPillText: { color: colors.pr, fontSize: 11, fontWeight: "700", marginLeft: 4 },
-  actions: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, gap: spacing.lg },
+  avatarRing: {
+    borderRadius: 24, borderWidth: 1.5, borderColor: colors.brand, padding: 1.5,
+  },
+  postUser: { fontSize: 15, fontWeight: "800", color: "#F0F0F0" },
+  postTime: { fontSize: 12, color: "#555", marginTop: 1 },
+  liveTag: {
+    backgroundColor: colors.brand, paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  liveTagText: { color: "#000", fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
+
+  postBody: { paddingHorizontal: spacing.md, paddingBottom: 12 },
+  workoutTitle: { fontSize: 20, fontWeight: "900", color: "#FFFFFF", letterSpacing: -0.4, lineHeight: 26 },
+  caption: { color: "#888", fontSize: 13, marginTop: 5, lineHeight: 19 },
+  prBadge: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    marginTop: 8, alignSelf: "flex-start",
+    backgroundColor: "rgba(200,154,58,0.12)", paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  prBadgeText: { color: "#C89A3A", fontSize: 12, fontWeight: "800" },
+
+  statsRow: {
+    flexDirection: "row", alignItems: "stretch",
+    marginHorizontal: spacing.md, marginBottom: 12,
+    backgroundColor: CARD2, borderRadius: radius.lg,
+    paddingVertical: 14, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: LINE,
+  },
+  statBlock: { flex: 1, alignItems: "flex-start" },
+  statDivider: { width: 1, backgroundColor: LINE, marginHorizontal: 2 },
+  statLabel: { fontSize: 11, fontWeight: "700", color: "#555", letterSpacing: 0.5, marginBottom: 3, textTransform: "uppercase" },
+  statValue: { fontSize: 18, fontWeight: "900", color: "#FFFFFF", letterSpacing: -0.3 },
+
+  photoSingle: { width: SW, height: SW * 0.6 },
+  photoDuo: { flexDirection: "row", gap: 2 },
+  photoDuoThumb: { flex: 1, height: SW * 0.5 },
+
+  actions: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: spacing.md, paddingVertical: 12,
+    borderTopWidth: 1, borderTopColor: LINE,
+    gap: spacing.lg,
+  },
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionText: { color: colors.text, fontSize: 13, fontWeight: "600" },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
-  emptyContent: { alignItems: "center", padding: spacing.xl },
-  emptyTitle: { fontSize: 17, fontWeight: "800", color: colors.text, marginTop: spacing.md },
-  emptySubtitle: { fontSize: 13, color: colors.textMuted, marginTop: 6, textAlign: "center" },
+  actionCount: { color: "#666", fontSize: 14, fontWeight: "700" },
+
+  privateTag: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: radius.full, backgroundColor: CARD2,
+  },
+  privateTagText: { color: "#555", fontSize: 11, fontWeight: "700" },
+  privateBody: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingLeft: 60,
+  },
+  privateName: { color: "#555", fontSize: 14, fontWeight: "600" },
+
+  emptyWrap: { flex: 1, backgroundColor: BLACK },
+  emptyContent: { alignItems: "center", padding: spacing.xxl, paddingTop: 80, gap: 10 },
+  emptyTitle: { fontSize: 17, fontWeight: "800", color: "#F0F0F0" },
+  emptySub: { fontSize: 13, color: "#555", textAlign: "center", lineHeight: 19 },
+  emptyBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6,
+    paddingHorizontal: 18, paddingVertical: 11, borderRadius: radius.full,
+    backgroundColor: colors.brand,
+  },
+  emptyBtnText: { color: colors.textInverse, fontWeight: "800", fontSize: 14 },
 });

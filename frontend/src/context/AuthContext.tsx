@@ -19,6 +19,7 @@ export interface AthoUser {
   needs_setup?: boolean;
   height_unit?: string;
   weight_unit?: string;
+  distance_unit?: string;
   height?: number | null;
   weight?: number | null;
   onboarded?: boolean;

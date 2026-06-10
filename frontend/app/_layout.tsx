@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -51,6 +51,33 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Handles tapping an Athos notification → opens the target screen.
+function NotificationTapHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    let Notifications: typeof import("expo-notifications") | null = null;
+    try { Notifications = require("expo-notifications"); } catch {}
+    if (!Notifications) return;
+
+    // Cold-launch: was the app opened by tapping a notification?
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      const screen = response?.notification?.request?.content?.data?.screen as string | undefined;
+      if (screen) router.replace(screen as any);
+    });
+
+    // While app is running in background/foreground
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const screen = response.notification.request.content.data?.screen as string | undefined;
+      if (screen) router.replace(screen as any);
+    });
+    return () => sub.remove();
+  }, [router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
 
@@ -64,9 +91,10 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <AuthProvider>
         <WorkoutProvider>
+          <NotificationTapHandler />
           <AuthGate>
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
               <Stack.Screen name="index" />
@@ -74,6 +102,9 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="workout/active" options={{ presentation: "modal" }} />
               <Stack.Screen name="workout/add-exercise" options={{ presentation: "modal" }} />
+              <Stack.Screen name="workout/add-cardio" options={{ presentation: "modal" }} />
+              <Stack.Screen name="workout/edit-cardio" options={{ presentation: "modal" }} />
+              <Stack.Screen name="workout/save-cardio" options={{ presentation: "modal" }} />
             </Stack>
           </AuthGate>
         </WorkoutProvider>

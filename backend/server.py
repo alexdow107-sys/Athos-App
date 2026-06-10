@@ -115,6 +115,7 @@ class ProfileUpdateIn(BaseModel):
     profile_picture: Optional[str] = None  # base64
     height_unit: Optional[str] = None
     weight_unit: Optional[str] = None
+    distance_unit: Optional[str] = None  # "km" | "mi"
     height: Optional[float] = None
     weight: Optional[float] = None
     is_private: Optional[bool] = None
@@ -276,6 +277,7 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "weight_goal": u.get("weight_goal"),
         "experience_level": u.get("experience_level"),
         "plan_preferences": u.get("plan_preferences"),
+        "distance_unit": u.get("distance_unit", "km"),
     }
 
 
@@ -997,6 +999,109 @@ async def workouts_calendar(user_id: str, year: int, month: int, current=Depends
         d = w["date"]
         by_date.setdefault(d, []).append(w)
     return {"workouts_by_date": by_date}
+
+
+# ===== CARDIO =====
+
+class CardioIn(BaseModel):
+    type: str
+    duration_seconds: int
+    distance_km: Optional[float] = None
+    notes: Optional[str] = None
+    date: Optional[str] = None  # YYYY-MM-DD, defaults to today
+
+
+@api.post("/cardio")
+async def log_cardio(body: CardioIn, current=Depends(get_current_user)):
+    import uuid as _uuid
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    doc = {
+        "cardio_id": str(_uuid.uuid4()),
+        "user_id": current["user_id"],
+        "type": body.type,
+        "duration_seconds": body.duration_seconds,
+        "distance_km": body.distance_km,
+        "notes": body.notes,
+        "date": body.date or today,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.cardio.insert_one(doc)
+    doc.pop("_id", None)
+    return {"cardio": doc}
+
+
+@api.get("/cardio")
+async def list_cardio(limit: int = 200, current=Depends(get_current_user)):
+    cursor = db.cardio.find({"user_id": current["user_id"]}, {"_id": 0}).sort("date", -1).limit(limit)
+    return {"cardio": [c async for c in cursor]}
+
+
+@api.get("/cardio/{cardio_id}")
+async def get_cardio(cardio_id: str, current=Depends(get_current_user)):
+    doc = await db.cardio.find_one({"cardio_id": cardio_id, "user_id": current["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"cardio": doc}
+
+
+@api.put("/cardio/{cardio_id}")
+async def update_cardio(cardio_id: str, body: CardioIn, current=Depends(get_current_user)):
+    doc = await db.cardio.find_one({"cardio_id": cardio_id, "user_id": current["user_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    updates = {k: v for k, v in body.dict().items() if v is not None}
+    await db.cardio.update_one({"cardio_id": cardio_id}, {"$set": updates})
+    updated = await db.cardio.find_one({"cardio_id": cardio_id}, {"_id": 0})
+    return {"cardio": updated}
+
+
+@api.delete("/cardio/{cardio_id}")
+async def delete_cardio(cardio_id: str, current=Depends(get_current_user)):
+    doc = await db.cardio.find_one({"cardio_id": cardio_id, "user_id": current["user_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.cardio.delete_one({"cardio_id": cardio_id})
+    await db.posts.delete_many({"cardio_id": cardio_id})
+    return {"ok": True}
+
+
+class CardioPostIn(BaseModel):
+    caption: Optional[str] = None
+    photos: Optional[List[str]] = None
+    visibility: str = "public"
+
+
+@api.post("/cardio/{cardio_id}/post")
+async def post_cardio(cardio_id: str, body: CardioPostIn, current=Depends(get_current_user)):
+    import uuid as _uuid
+    c = await db.cardio.find_one({"cardio_id": cardio_id, "user_id": current["user_id"]})
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Upsert: one post per cardio session
+    existing = await db.posts.find_one({"cardio_id": cardio_id})
+    post_id = existing["post_id"] if existing else str(_uuid.uuid4())
+    doc = {
+        "post_id": post_id,
+        "user_id": current["user_id"],
+        "cardio_id": cardio_id,
+        "workout_id": None,
+        "name": c["type"],
+        "duration_seconds": c["duration_seconds"],
+        "distance_km": c.get("distance_km"),
+        "total_volume": 0,
+        "exercise_count": 0,
+        "caption": body.caption,
+        "photos": body.photos or [],
+        "visibility": body.visibility,
+        "prs": [],
+        "likes_count": existing.get("likes_count", 0) if existing else 0,
+        "comments_count": existing.get("comments_count", 0) if existing else 0,
+        "created_at": existing["created_at"] if existing else datetime.utcnow().isoformat(),
+        "post_type": "cardio",
+    }
+    await db.posts.replace_one({"post_id": post_id}, doc, upsert=True)
+    doc.pop("_id", None)
+    return {"post": doc}
 
 
 # ===== FEED =====

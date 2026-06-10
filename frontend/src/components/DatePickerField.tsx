@@ -27,7 +27,7 @@ export const DatePickerField: React.FC<Props> = ({ value, onChange, placeholder,
     const min = minimumDate ? minimumDate.toISOString().slice(0, 10) : undefined;
     const max = maximumDate ? maximumDate.toISOString().slice(0, 10) : undefined;
     return (
-      // @ts-expect-error using DOM input on web
+      // @ts-ignore using DOM input on web
       <input
         type="date"
         value={dateStr}

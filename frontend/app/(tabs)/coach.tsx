@@ -19,8 +19,7 @@ export default function CoachScreen() {
         <Text style={styles.tag}>Coming soon</Text>
         <Text style={styles.desc}>
           Author your own multi-week programs, share them with athletes, and
-          earn from your training expertise. Premium subscribers will get
-          early access.
+          earn from your training expertise.
         </Text>
 
         <View style={styles.cardList}>
@@ -48,7 +47,7 @@ export default function CoachScreen() {
         </View>
 
         <View style={styles.notify}>
-          <Ionicons name="sparkles" size={16} color={colors.brand} />
+          <Ionicons name="notifications-outline" size={16} color={colors.brand} />
           <Text style={styles.notifyText}>We’ll let you know the second this drops.</Text>
         </View>
       </ScrollView>

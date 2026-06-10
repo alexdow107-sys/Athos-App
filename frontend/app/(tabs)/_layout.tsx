@@ -7,7 +7,8 @@ import { useWorkout } from "@/src/context/WorkoutContext";
 
 const TabIcon: React.FC<{ name: any; color: string; focused: boolean; testID?: string }> = ({ name, color, focused, testID }) => (
   <View testID={testID} style={{ alignItems: "center", justifyContent: "center" }}>
-    <Ionicons name={name} size={focused ? 26 : 24} color={color} />
+    <Ionicons name={name} size={focused ? 27 : 24} color={color} />
+    {focused && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: color, marginTop: 3 }} />}
   </View>
 );
 
@@ -31,13 +32,14 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: colors.bg,
-          borderTopColor: colors.border,
+          backgroundColor: "#1E2636",
+          borderTopColor: "#212D42",
+          borderTopWidth: 1,
           height: 64,
-          paddingTop: 6,
-          paddingBottom: 8,
+          paddingTop: 8,
+          paddingBottom: 10,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "700" },
+        tabBarShowLabel: false,
       }}
     >
       <Tabs.Screen
@@ -51,7 +53,7 @@ export default function TabsLayout() {
         name="discover"
         options={{
           title: "Discover",
-          tabBarIcon: ({ color, focused }) => <TabIcon testID="tab-discover" name={focused ? "search" : "search-outline"} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon testID="tab-discover" name={focused ? "compass" : "compass-outline"} color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -78,7 +80,7 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, focused }) => <TabIcon testID="tab-profile" name={focused ? "person" : "person-outline"} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon testID="tab-profile" name={focused ? "person-circle" : "person-circle-outline"} color={color} focused={focused} />,
         }}
       />
     </Tabs>

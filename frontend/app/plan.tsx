@@ -1,50 +1,40 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import React, { useMemo } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
-import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
-import { Button } from "@/src/components/Button";
 import { LogoMark } from "@/src/components/Logo";
 import { colors, radius, spacing } from "@/src/theme";
+import { generatePlan, type GeneratedPlan } from "@/src/utils/planGenerator";
 
 const GOAL_LABELS: Record<string, string> = {
-  strength: "Strength", hypertrophy: "Hypertrophy", weight_loss: "Weight loss",
-  endurance: "Endurance", athletic: "Athletic", general: "General",
+  strength: "Build Strength",
+  hypertrophy: "Hypertrophy",
+  weight_loss: "Lose Weight",
+  endurance: "Endurance",
+  athletic: "Athletic",
+  general: "General Fitness",
+};
+
+const EXP_LABELS: Record<string, string> = {
+  beginner: "Beginner",
+  intermediate: "Intermediate",
+  advanced: "Advanced",
+};
+
+const EQUIP_LABELS: Record<string, string> = {
+  full_gym: "Full gym",
+  home_dumbbells: "Home gym",
+  bodyweight: "Bodyweight",
 };
 
 export default function PlanScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const [plan, setPlan] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const p = await api<{ plan: any }>("/coach/plan");
-        setPlan(p.plan);
-      } catch {} finally { setLoading(false); }
-    })();
-  }, []);
-
-  const onGenerate = async () => {
-    setGenerating(true);
-    try {
-      const r = await api<{ plan: any }>("/coach/plan", { method: "POST" });
-      setPlan(r.plan);
-    } catch (e: any) {
-      Alert.alert("Couldn't generate plan", e?.message || "Try again");
-    } finally { setGenerating(false); }
-  };
-
-  // === FREE FOR ALL — no paywall ===
-  // (Premium gating intentionally removed; can be re-introduced later.)
-
-  // === NEEDS QUESTIONNAIRE (hasn't filled it out yet) ===
+  // ── No questionnaire yet ────────────────────────────────────────────────────
   if (!user?.plan_preferences) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]} testID="plan-needs-questionnaire">
@@ -55,22 +45,22 @@ export default function PlanScreen() {
           <Text style={styles.headerTitle}>My Plan</Text>
           <View style={{ width: 36 }} />
         </View>
-        <View style={styles.qWrap}>
-          <View style={styles.qBadge}>
+        <View style={styles.emptyWrap}>
+          <View style={styles.emptyBadge}>
             <LogoMark size={36} tint={colors.brand} />
           </View>
-          <Text style={styles.qTitle}>Let&apos;s build your plan.</Text>
-          <Text style={styles.qSub}>
-            A few quick questions — how often you train, your goals, equipment, and any limitations.
-            We&apos;ll generate a plan immediately after.
+          <Text style={styles.emptyTitle}>Build your plan.</Text>
+          <Text style={styles.emptySub}>
+            Answer a few quick questions about your training frequency, goals, and equipment.
+            We'll build a personalised weekly plan instantly.
           </Text>
           <TouchableOpacity
             testID="start-questionnaire-btn"
             onPress={() => router.push("/plan-questionnaire")}
-            style={styles.buyBtn}
+            style={styles.primaryBtn}
             activeOpacity={0.85}
           >
-            <Text style={styles.buyText}>Start questionnaire</Text>
+            <Text style={styles.primaryBtnText}>Start questionnaire</Text>
             <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         </View>
@@ -78,136 +68,187 @@ export default function PlanScreen() {
     );
   }
 
-  // === FULL PLAN VIEW ===
-  const prefs = user.plan_preferences || {};
+  // ── Plan view ───────────────────────────────────────────────────────────────
+  return <PlanView prefs={user.plan_preferences} onChangeAnswers={() => router.push("/plan-questionnaire")} onBack={() => router.back()} />;
+}
+
+function PlanView({ prefs, onChangeAnswers, onBack }: { prefs: any; onChangeAnswers: () => void; onBack: () => void }) {
+  const plan: GeneratedPlan = useMemo(() => generatePlan(prefs), [prefs]);
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="plan-screen">
       <View style={styles.header}>
-        <TouchableOpacity testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
+        <TouchableOpacity testID="back-btn" onPress={onBack} style={styles.iconBtn}>
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Plan</Text>
-        <TouchableOpacity
-          testID="edit-questionnaire-btn"
-          onPress={() => router.push("/plan-questionnaire")}
-          style={styles.iconBtn}
-        >
-          <Ionicons name="create-outline" size={22} color={colors.brand} />
-        </TouchableOpacity>
+        <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: 60 }}>
-        <View style={styles.summary}>
-          <Text style={styles.section}>Your training profile</Text>
-          <View style={styles.goalsRow}>
-            <View style={styles.goalTile}>
-              <Text style={styles.goalLabel}>FREQUENCY</Text>
-              <Text style={styles.goalValue}>{prefs.days_per_week || "—"}× / wk</Text>
-            </View>
-            <View style={styles.goalTile}>
-              <Text style={styles.goalLabel}>DURATION</Text>
-              <Text style={styles.goalValue}>{prefs.session_duration_min ? `${prefs.session_duration_min}m` : "—"}</Text>
-            </View>
-            <View style={styles.goalTile}>
-              <Text style={styles.goalLabel}>GOAL</Text>
-              <Text style={styles.goalValue}>{GOAL_LABELS[prefs.primary_goal || ""] || "—"}</Text>
-            </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {/* ── Training profile ──────────────────────────────────────────────── */}
+        <Text style={styles.sectionLabel}>Training profile</Text>
+        <View style={styles.profileCard}>
+          <Stat label="FREQUENCY" value={prefs.days_per_week ? `${prefs.days_per_week}× / week` : "—"} />
+          <Divider />
+          <Stat label="SESSION" value={prefs.session_duration_min ? `${prefs.session_duration_min} min` : "—"} />
+          <Divider />
+          <Stat label="GOAL" value={GOAL_LABELS[prefs.primary_goal] ?? "—"} />
+          <Divider />
+          <Stat label="LEVEL" value={EXP_LABELS[prefs.experience_level] ?? "—"} />
+          <Divider />
+          <Stat label="EQUIPMENT" value={EQUIP_LABELS[prefs.equipment] ?? "—"} />
+        </View>
+
+        {/* ── Split name ────────────────────────────────────────────────────── */}
+        <View style={styles.splitBadge}>
+          <Ionicons name="calendar-outline" size={15} color={colors.brand} />
+          <Text style={styles.splitName}>{plan.splitName}</Text>
+        </View>
+
+        {/* ── Not-recommended notice ────────────────────────────────────────── */}
+        {plan.splitNotice ? (
+          <View style={styles.warnCard}>
+            <Ionicons name="warning-outline" size={15} color="#B45309" style={{ marginTop: 1 }} />
+            <Text style={styles.warnText}>{plan.splitNotice}</Text>
           </View>
+        ) : null}
+
+        {/* ── Coach note ────────────────────────────────────────────────────── */}
+        <View style={styles.noteCard}>
+          <Text style={styles.noteText}>{plan.coachNote}</Text>
         </View>
 
-        <View style={{ marginTop: spacing.lg }}>
-          <Button
-            testID="generate-plan-btn"
-            title={plan?.ai_enriched ? "Regenerate plan" : "Generate AI plan"}
-            onPress={onGenerate}
-            loading={generating}
-            icon={<Ionicons name="sparkles" size={16} color="#fff" />}
-          />
-        </View>
-
-        {loading ? <ActivityIndicator color={colors.brand} style={{ marginTop: 24 }} /> : plan ? (
-          <View style={{ marginTop: spacing.lg }}>
-            {plan.ai_enriched && plan.ai_summary && (
-              <View style={styles.aiBox}>
-                <View style={styles.aiHeader}>
-                  <Ionicons name="sparkles" size={14} color={colors.pr} />
-                  <Text style={styles.aiHeaderText}>AI COACH SUMMARY</Text>
+        {/* ── Weekly plan ───────────────────────────────────────────────────── */}
+        <Text style={styles.sectionLabel}>Weekly schedule</Text>
+        {plan.days.map((day, i) => (
+          <View key={i} style={[styles.dayCard, day.isRest && styles.dayCardRest]} testID={`plan-day-${i}`}>
+            <View style={styles.dayHeader}>
+              <Text style={styles.dayName}>{day.day}</Text>
+              <Text style={[styles.dayFocus, day.isRest && styles.dayFocusRest]}>{day.focus}</Text>
+            </View>
+            {!day.isRest && day.exercises.map((ex, j) => (
+              <View key={j} style={styles.exRow}>
+                <View style={styles.exDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.exName}>{ex.name}</Text>
+                  <Text style={styles.exDetail}>{ex.sets} sets × {ex.reps} reps{ex.note ? ` · ${ex.note}` : ""}</Text>
                 </View>
-                <Text style={styles.aiSummary}>{plan.ai_summary}</Text>
               </View>
-            )}
-            {plan.ai_weekly_plan && plan.ai_weekly_plan.length > 0 ? (
-              <View>
-                <Text style={styles.section}>Your AI weekly schedule</Text>
-                {plan.ai_weekly_plan.map((day: any, i: number) => (
-                  <View key={i} style={styles.dayCard} testID={`plan-day-${i}`}>
-                    <Text style={styles.dayLabel}>{day.day} · <Text style={styles.dayFocus}>{day.focus}</Text></Text>
-                    {(day.exercises || []).map((ex: any, j: number) => (
-                      <View key={j} style={styles.exLine}>
-                        <Text style={styles.exName}>{ex.name}</Text>
-                        <Text style={styles.exDetail}>{ex.sets} × {ex.reps}{ex.note ? ` — ${ex.note}` : ""}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            ) : null}
+            ))}
           </View>
-        ) : (
-          <Text style={styles.empty}>Tap &quot;Generate AI plan&quot; to build a 7-day training plan based on your answers.</Text>
-        )}
+        ))}
+
+        {/* ── Change answers button ─────────────────────────────────────────── */}
+        <TouchableOpacity
+          testID="change-answers-btn"
+          onPress={onChangeAnswers}
+          style={styles.changeBtn}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="refresh-outline" size={16} color={colors.brand} />
+          <Text style={styles.changeBtnText}>Change my answers</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
+function Divider() {
+  return <View style={styles.statDivider} />;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: "row", alignItems: "center", padding: spacing.sm, justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.divider },
+  header: {
+    flexDirection: "row", alignItems: "center", padding: spacing.sm,
+    justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.divider,
+  },
   iconBtn: { padding: 6 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+  scroll: { padding: spacing.md, paddingBottom: 60 },
 
-  heroBlock: { backgroundColor: colors.brand, padding: spacing.xl, paddingTop: spacing.xl, alignItems: "center" },
-  heroIcon: { width: 64, height: 64, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  heroEyebrow: { color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: "900", letterSpacing: 1.5, textTransform: "uppercase" },
-  heroTitle: { color: "#fff", fontSize: 30, fontWeight: "900", letterSpacing: -0.7, marginTop: 6, textAlign: "center" },
-  heroSub: { color: "rgba(255,255,255,0.9)", fontSize: 14, marginTop: 8, textAlign: "center", lineHeight: 20, maxWidth: 320 },
-  priceRow: { flexDirection: "row", alignItems: "baseline", marginTop: spacing.lg },
-  price: { color: "#fff", fontSize: 40, fontWeight: "900", letterSpacing: -1.5 },
-  priceSub: { color: "rgba(255,255,255,0.85)", fontSize: 13, marginLeft: 6, fontWeight: "700" },
-
-  benefits: { padding: spacing.lg, gap: spacing.md },
-  benefitRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  benefitIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.brandLight, alignItems: "center", justifyContent: "center" },
-  benefitText: { color: colors.text, fontSize: 14, flex: 1, lineHeight: 20, fontWeight: "600" },
-
-  buyBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    backgroundColor: colors.brand, paddingVertical: 16, borderRadius: radius.md,
+  // Empty state
+  emptyWrap: { flex: 1, padding: spacing.xl, alignItems: "center", justifyContent: "center" },
+  emptyBadge: {
+    width: 80, height: 80, borderRadius: 20, backgroundColor: colors.brandLight,
+    alignItems: "center", justifyContent: "center", marginBottom: spacing.lg,
   },
-  buyText: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  fineprint: { color: colors.textMuted, fontSize: 11, textAlign: "center", lineHeight: 16 },
+  emptyTitle: { color: colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.6, textAlign: "center" },
+  emptySub: { color: colors.textSecondary, fontSize: 14, marginTop: 8, textAlign: "center", lineHeight: 21, marginBottom: spacing.xl },
+  primaryBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.brand, paddingVertical: 16, paddingHorizontal: 28, borderRadius: radius.md,
+  },
+  primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
 
-  qWrap: { padding: spacing.xl, alignItems: "center" },
-  qBadge: { width: 80, height: 80, borderRadius: 20, backgroundColor: colors.brandLight, alignItems: "center", justifyContent: "center", marginTop: spacing.xl },
-  qTitle: { color: colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.6, marginTop: spacing.lg, textAlign: "center" },
-  qSub: { color: colors.textSecondary, fontSize: 14, marginTop: 8, textAlign: "center", lineHeight: 20, marginBottom: spacing.xl },
+  // Profile card
+  sectionLabel: {
+    fontSize: 11, fontWeight: "900", color: colors.textMuted,
+    letterSpacing: 1.2, marginTop: spacing.lg, marginBottom: spacing.sm, textTransform: "uppercase",
+  },
+  profileCard: {
+    backgroundColor: colors.bg2, borderRadius: radius.lg,
+    padding: spacing.md, gap: 0,
+  },
+  stat: { paddingVertical: 10 },
+  statLabel: { fontSize: 10, fontWeight: "900", color: colors.textMuted, letterSpacing: 1.2, textTransform: "uppercase" },
+  statValue: { color: colors.text, fontSize: 15, fontWeight: "800", marginTop: 2 },
+  statDivider: { height: 1, backgroundColor: colors.divider },
 
-  summary: { backgroundColor: colors.bg2, padding: spacing.md, borderRadius: radius.lg },
-  section: { fontSize: 11, fontWeight: "900", color: colors.textMuted, letterSpacing: 1.2, marginBottom: 8, marginTop: spacing.lg, textTransform: "uppercase" },
-  goalsRow: { flexDirection: "row", gap: 8 },
-  goalTile: { flex: 1, backgroundColor: colors.bg, padding: spacing.md, borderRadius: radius.md },
-  goalLabel: { fontSize: 9, color: colors.textMuted, fontWeight: "900", letterSpacing: 1 },
-  goalValue: { color: colors.text, fontSize: 14, fontWeight: "800", marginTop: 4 },
-  aiBox: { backgroundColor: colors.text, padding: spacing.md, borderRadius: radius.lg, marginBottom: spacing.md },
-  aiHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
-  aiHeaderText: { color: colors.pr, fontWeight: "900", fontSize: 10, letterSpacing: 1 },
-  aiSummary: { color: "#fff", fontSize: 13, lineHeight: 19 },
-  dayCard: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, marginBottom: 8 },
-  dayLabel: { color: colors.text, fontWeight: "800", fontSize: 14, marginBottom: 6 },
-  dayFocus: { color: colors.brand },
-  exLine: { paddingVertical: 3 },
+  // Split badge
+  splitBadge: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginTop: spacing.lg, backgroundColor: colors.brandLight,
+    paddingVertical: 10, paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+  },
+  splitName: { color: colors.brand, fontWeight: "800", fontSize: 14 },
+
+  // Coach note
+  noteCard: {
+    marginTop: spacing.sm, backgroundColor: colors.bg2,
+    padding: spacing.md, borderRadius: radius.md,
+  },
+  noteText: { color: colors.textSecondary, fontSize: 13, lineHeight: 20 },
+
+  // Day cards
+  dayCard: {
+    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, marginBottom: 10,
+  },
+  dayCardRest: { opacity: 0.45 },
+  dayHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  dayName: { color: colors.textMuted, fontSize: 12, fontWeight: "900", letterSpacing: 1 },
+  dayFocus: { color: colors.brand, fontSize: 14, fontWeight: "800" },
+  dayFocusRest: { color: colors.textMuted },
+  exRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 5 },
+  exDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.brand, marginTop: 5 },
   exName: { color: colors.text, fontWeight: "700", fontSize: 13 },
-  exDetail: { color: colors.textMuted, fontSize: 12 },
-  empty: { color: colors.textMuted, padding: spacing.xl, textAlign: "center", fontStyle: "italic" },
+  exDetail: { color: colors.textMuted, fontSize: 12, marginTop: 1 },
+
+  // Not-recommended warning
+  warnCard: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    marginTop: spacing.sm, padding: spacing.md, borderRadius: radius.md,
+    backgroundColor: "rgba(200,154,58,0.10)", borderWidth: 1, borderColor: "rgba(200,154,58,0.30)",
+  },
+  warnText: { color: "#E0C079", fontSize: 12, lineHeight: 17, flex: 1, fontWeight: "600" },
+
+  // Change answers button
+  changeBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    marginTop: spacing.xl, paddingVertical: 15, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: colors.brand,
+  },
+  changeBtnText: { color: colors.brand, fontWeight: "800", fontSize: 14 },
 });

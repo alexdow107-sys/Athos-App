@@ -111,12 +111,6 @@ export default function UserProfileScreen() {
               <Text style={styles.liveText}>WORKING OUT</Text>
             </View>
           ) : null}
-          {profile.is_premium ? (
-            <View style={styles.proBadge}>
-              <Ionicons name="star" size={12} color={colors.pr} />
-              <Text style={styles.proText}>ATHO PREMIUM</Text>
-            </View>
-          ) : null}
           <View style={styles.statsRow}>
             <View style={styles.statBlock}>
               <Text style={styles.statValue}>{profile.workouts_count || 0}</Text>
@@ -206,11 +200,9 @@ const styles = StyleSheet.create({
   name: { fontSize: 22, fontWeight: "900", color: colors.text, marginTop: spacing.md, letterSpacing: -0.3 },
   username: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
   bio: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.sm, textAlign: "center", paddingHorizontal: 24 },
-  liveBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#FEE2E2", borderRadius: radius.full, marginTop: spacing.sm },
+  liveBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "rgba(192,64,64,0.14)", borderWidth: 1, borderColor: "rgba(192,64,64,0.30)", borderRadius: radius.full, marginTop: spacing.sm },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger, marginRight: 6 },
   liveText: { color: colors.danger, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
-  proBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#FEF3C7", borderRadius: radius.full, marginTop: spacing.sm },
-  proText: { color: colors.pr, fontSize: 10, fontWeight: "900", marginLeft: 4, letterSpacing: 0.5 },
   statsRow: { flexDirection: "row", marginTop: spacing.lg },
   statBlock: { paddingHorizontal: 20, alignItems: "center" },
   statValue: { fontSize: 20, fontWeight: "900", color: colors.text },

@@ -62,14 +62,23 @@ export default function WorkoutDetailScreen() {
   };
 
   const onDelete = async () => {
+    const doDelete = async () => {
+      try {
+        await api(`/workouts/${id}`, { method: "DELETE" });
+        router.replace("/(tabs)/workout" as any);
+      } catch (e: any) {
+        if (Platform.OS === "web") window.alert("Failed: " + (e.message || "Could not delete"));
+        else Alert.alert("Failed", e.message);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Delete this workout? This cannot be undone.")) doDelete();
+      return;
+    }
     Alert.alert("Delete workout?", "This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => {
-        try {
-          await api(`/workouts/${id}`, { method: "DELETE" });
-          router.back();
-        } catch (e: any) { Alert.alert("Failed", e.message); }
-      }},
+      { text: "Delete", style: "destructive", onPress: doDelete },
     ]);
   };
 
@@ -246,7 +255,7 @@ const styles = StyleSheet.create({
   statValue: { color: colors.text, fontSize: 16, fontWeight: "800", marginTop: 2 },
   notesBox: { marginHorizontal: spacing.md, padding: spacing.md, backgroundColor: colors.bg2, borderRadius: radius.lg },
   notesText: { color: colors.textSecondary, fontSize: 13 },
-  prSection: { marginHorizontal: spacing.md, marginTop: spacing.md, padding: spacing.md, backgroundColor: "#FEF3C7", borderRadius: radius.lg },
+  prSection: { marginHorizontal: spacing.md, marginTop: spacing.md, padding: spacing.md, backgroundColor: "rgba(200,154,58,0.10)", borderWidth: 1, borderColor: "rgba(200,154,58,0.30)", borderRadius: radius.lg },
   sectionLabel: { fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 1.2, paddingHorizontal: spacing.md, marginTop: spacing.lg, marginBottom: 8, textTransform: "uppercase" },
   prRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
   prName: { color: colors.text, fontWeight: "700" },

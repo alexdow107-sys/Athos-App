@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import React, { useState, useRef } from "react";
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,12 +21,22 @@ export default function SettingsScreen() {
   const [pickingPhoto, setPickingPhoto] = useState(false);
   const [heightUnit, setHeightUnit] = useState<"cm" | "ft_in">((user?.height_unit as any) || "cm");
   const [weightUnit, setWeightUnit] = useState<"kg" | "lb">((user?.weight_unit as any) || "kg");
+  const [distanceUnit, setDistanceUnit] = useState<"km" | "mi">((user?.distance_unit as any) || "km");
   const [height, setHeight] = useState(String(user?.height || ""));
   const [weight, setWeight] = useState(String(user?.weight || ""));
   const [isPrivate, setIsPrivate] = useState(!!user?.is_private);
   const [hideFollowers, setHideFollowers] = useState(!!user?.hide_followers);
   const [showStatus, setShowStatus] = useState(user?.show_workout_status !== false);
   const [saving, setSaving] = useState(false);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+
+  const showToast = () => {
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1800),
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+  };
 
   const onPickAvatar = async () => {
     setPickingPhoto(true);
@@ -95,19 +105,31 @@ export default function SettingsScreen() {
           weight_unit: weightUnit,
           height: height ? parseFloat(height) : null,
           weight: weight ? parseFloat(weight) : null,
+          distance_unit: distanceUnit,
           is_private: isPrivate,
           hide_followers: hideFollowers,
           show_workout_status: showStatus,
         }),
       });
       await refresh();
-      Alert.alert("Saved", "Profile updated");
+      showToast();
     } catch (e: any) {
       Alert.alert("Failed", e.message);
     } finally { setSaving(false); }
   };
 
+  const confirm = (message: string) => {
+    if (Platform.OS === "web") return window.confirm(message);
+    // On native, we handle via Alert separately
+    return true;
+  };
+
   const onLogout = () => {
+    if (Platform.OS === "web") {
+      if (!window.confirm("Sign out of Athos?")) return;
+      logout().then(() => router.replace("/auth/login"));
+      return;
+    }
     Alert.alert("Sign out?", "", [
       { text: "Cancel", style: "cancel" },
       { text: "Sign out", style: "destructive", onPress: async () => {
@@ -118,6 +140,15 @@ export default function SettingsScreen() {
   };
 
   const onDeleteAccount = () => {
+    if (Platform.OS === "web") {
+      if (!window.confirm("Delete account? This permanently removes your account, workouts, posts, and messages.")) return;
+      if (!window.confirm("Are you absolutely sure? This cannot be undone.")) return;
+      api("/users/me", { method: "DELETE" })
+        .then(() => logout())
+        .then(() => router.replace("/auth/login"))
+        .catch((e: any) => window.alert(e.message || "Could not delete account."));
+      return;
+    }
     Alert.alert(
       "Delete account?",
       "This permanently removes your account, workouts, posts, follows, and messages. This cannot be undone.",
@@ -127,7 +158,6 @@ export default function SettingsScreen() {
           text: "Delete forever",
           style: "destructive",
           onPress: () => {
-            // Second confirmation to avoid mis-taps
             Alert.alert(
               "Are you absolutely sure?",
               "All your data will be gone for good.",
@@ -156,6 +186,13 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="settings-screen">
+      <Animated.View style={[styles.toast, {
+        opacity: toastAnim,
+        transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
+      }]} pointerEvents="none">
+        <Ionicons name="checkmark-circle" size={16} color={colors.brand} />
+        <Text style={styles.toastText}>Changes saved</Text>
+      </Animated.View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
           <TouchableOpacity testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}>
@@ -224,6 +261,15 @@ export default function SettingsScreen() {
               <Text style={[styles.choiceText, heightUnit === "ft_in" && styles.choiceTextActive]}>Feet & Inches</Text>
             </TouchableOpacity>
           </View>
+          <Text style={styles.label}>Distance</Text>
+          <View style={styles.row}>
+            <TouchableOpacity testID="unit-km" onPress={() => setDistanceUnit("km")} style={[styles.choice, distanceUnit === "km" && styles.choiceActive]}>
+              <Text style={[styles.choiceText, distanceUnit === "km" && styles.choiceTextActive]}>Kilometers (km)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="unit-mi" onPress={() => setDistanceUnit("mi")} style={[styles.choice, distanceUnit === "mi" && styles.choiceActive]}>
+              <Text style={[styles.choiceText, distanceUnit === "mi" && styles.choiceTextActive]}>Miles (mi)</Text>
+            </TouchableOpacity>
+          </View>
 
           <Text style={styles.section}>Privacy</Text>
           <View style={styles.toggleRow}>
@@ -251,13 +297,6 @@ export default function SettingsScreen() {
           <View style={{ marginTop: spacing.xl }}>
             <Button testID="save-settings-btn" title="Save changes" onPress={onSave} loading={saving} />
           </View>
-
-          <Text style={styles.section}>Subscription</Text>
-          <TouchableOpacity testID="manage-sub-btn" style={styles.linkRow} onPress={() => router.push("/subscription")}>
-            <Ionicons name="star" size={18} color={colors.pr} />
-            <Text style={styles.linkText}>{user?.is_premium ? "Manage subscription" : "Upgrade to Premium"}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
 
           <View style={{ marginTop: spacing.xl }}>
             <Button testID="logout-btn" title="Sign out" variant="ghost" onPress={onLogout} />
@@ -306,7 +345,7 @@ const styles = StyleSheet.create({
   dangerBtn: {
     flexDirection: "row", alignItems: "center", gap: 12,
     padding: spacing.md, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FEF2F2",
+    borderWidth: 1, borderColor: "rgba(192,64,64,0.40)", backgroundColor: "rgba(192,64,64,0.10)",
   },
   dangerTitle: { color: colors.danger, fontWeight: "800", fontSize: 14 },
   dangerDesc: { color: colors.danger, fontSize: 12, marginTop: 2, opacity: 0.85 },
@@ -321,4 +360,13 @@ const styles = StyleSheet.create({
   avatarDesc: { color: colors.textMuted, fontSize: 12, marginTop: 4, lineHeight: 17 },
   avatarRemove: { marginTop: 8, alignSelf: "flex-start" },
   avatarRemoveText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
+
+  toast: {
+    position: "absolute", top: 56, alignSelf: "center", zIndex: 100,
+    flexDirection: "row", alignItems: "center", gap: 7,
+    backgroundColor: colors.bg3, borderWidth: 1, borderColor: colors.brand,
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full,
+    shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6,
+  },
+  toastText: { color: colors.text, fontSize: 13, fontWeight: "700" },
 });

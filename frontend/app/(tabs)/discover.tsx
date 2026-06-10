@@ -57,7 +57,6 @@ export default function DiscoverScreen() {
         <Text style={styles.userMeta}>@{item.username}{item.workouts_count ? ` · ${item.workouts_count} workouts` : ""}</Text>
         {item.bio ? <Text style={styles.userBio} numberOfLines={1}>{item.bio}</Text> : null}
       </View>
-      {item.is_premium ? <View style={styles.premiumBadge}><Text style={styles.premiumText}>PRO</Text></View> : null}
     </TouchableOpacity>
   );
 
@@ -117,8 +116,6 @@ const styles = StyleSheet.create({
   userName: { fontWeight: "700", color: colors.text, fontSize: 15 },
   userMeta: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   userBio: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  premiumBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm, backgroundColor: colors.brandLight },
-  premiumText: { color: colors.brand, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
   empty: { alignItems: "center", paddingVertical: 48 },
   emptyText: { color: colors.textMuted, fontSize: 14, marginTop: 8 },
 });

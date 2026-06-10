@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,42 +20,18 @@ export default function AnalyticsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [overview, setOverview] = useState<any>(null);
-  const [insights, setInsights] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const o = await api<any>("/analytics/overview");
       setOverview(o);
-      if (user?.is_premium) {
-        try {
-          const r = await api<{ insights: any[] }>("/insights/latest");
-          setInsights(r.insights || []);
-        } catch {}
-      }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, []);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
-
-  const onGenerate = async () => {
-    if (!user?.is_premium) {
-      router.push("/subscription");
-      return;
-    }
-    setGenerating(true);
-    try {
-      const r = await api<{ insights: any[] }>("/insights/generate", { method: "POST" });
-      setInsights(r.insights);
-    } catch (e: any) {
-      Alert.alert("Failed", e.message);
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -79,43 +55,6 @@ export default function AnalyticsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 60 }}>
-        {/* Premium banner / AI insights */}
-        {!user?.is_premium ? (
-          <TouchableOpacity testID="premium-cta" style={styles.premiumBanner} onPress={() => router.push("/subscription")} activeOpacity={0.85}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.proPill}><Ionicons name="star" size={11} color={colors.pr} /><Text style={styles.proPillText}>PREMIUM</Text></View>
-              <Text style={styles.premiumTitle}>Unlock AI Coaching</Text>
-              <Text style={styles.premiumSubtitle}>Plateau detection, imbalance analysis, and personal coaching insights from Claude AI.</Text>
-              <View style={styles.premiumCtaBtn}>
-                <Text style={styles.premiumCtaText}>Try Premium for $9.99/mo</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.insightsBox}>
-            <View style={styles.insightHeader}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.proPill}><Ionicons name="star" size={11} color={colors.pr} /><Text style={styles.proPillText}>PREMIUM AI</Text></View>
-                <Text style={styles.insightsTitle}>Coach Insights</Text>
-              </View>
-              <TouchableOpacity testID="generate-insights-btn" onPress={onGenerate} disabled={generating} style={styles.regenerateBtn}>
-                {generating ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="sparkles" size={16} color="#fff" />}
-                <Text style={styles.regenerateText}>{generating ? "Analyzing..." : insights.length ? "Refresh" : "Generate"}</Text>
-              </TouchableOpacity>
-            </View>
-            {insights.length === 0 ? (
-              <Text style={styles.insightEmpty}>Tap "Generate" for AI-powered analysis of your last 12 weeks of training.</Text>
-            ) : (
-              insights.map((it, i) => (
-                <View key={i} style={styles.insightCard} testID={`insight-${i}`}>
-                  <Text style={styles.insightCardTitle}>{it.title}</Text>
-                  <Text style={styles.insightCardBody}>{it.body}</Text>
-                </View>
-              ))
-            )}
-          </View>
-        )}
-
         {/* Overview tiles */}
         <View style={styles.tileRow}>
           <View style={styles.tile}>
@@ -161,7 +100,7 @@ export default function AnalyticsScreen() {
               <View key={m.muscle} style={styles.muscleRow}>
                 <Text style={styles.muscleLabel}>{MUSCLE_LABELS[m.muscle] || m.muscle}</Text>
                 <View style={styles.muscleBarBg}>
-                  <View style={[styles.muscleBarFill, { width: `${(m.volume / muscleMax) * 100}%` }]} />
+                  <View style={[styles.muscleBarFill, { width: `${(m.volume / muscleMax) * 100}%` as any }]} />
                 </View>
                 <Text style={styles.muscleVal}>{fmtVolume(m.volume, user?.weight_unit || "kg")}</Text>
               </View>
@@ -200,23 +139,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", padding: spacing.sm, justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.divider },
   iconBtn: { padding: 6 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
-  premiumBanner: { backgroundColor: colors.text, margin: spacing.md, padding: spacing.lg, borderRadius: radius.xl, flexDirection: "row" },
-  proPill: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 3, backgroundColor: "#FEF3C7", borderRadius: radius.full, alignSelf: "flex-start", gap: 4 },
-  proPillText: { color: colors.pr, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
-  premiumTitle: { color: "#fff", fontSize: 20, fontWeight: "900", marginTop: 8, letterSpacing: -0.3 },
-  premiumSubtitle: { color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 6, lineHeight: 18 },
-  premiumCtaBtn: { backgroundColor: colors.brand, paddingVertical: 10, paddingHorizontal: 16, borderRadius: radius.md, marginTop: spacing.md, alignSelf: "flex-start" },
-  premiumCtaText: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  insightsBox: { margin: spacing.md, padding: spacing.lg, backgroundColor: colors.brandLight + "60", borderRadius: radius.xl, borderWidth: 1, borderColor: colors.brandLight },
-  insightHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: spacing.md },
-  insightsTitle: { fontSize: 18, fontWeight: "900", color: colors.text, marginTop: 6 },
-  regenerateBtn: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.brand, borderRadius: radius.md, gap: 4 },
-  regenerateText: { color: "#fff", fontWeight: "800", fontSize: 12 },
-  insightEmpty: { color: colors.textMuted, fontSize: 13, fontStyle: "italic" },
-  insightCard: { backgroundColor: colors.bg, padding: spacing.md, borderRadius: radius.md, marginBottom: 8 },
-  insightCardTitle: { color: colors.brand, fontWeight: "800", fontSize: 14 },
-  insightCardBody: { color: colors.text, fontSize: 13, marginTop: 4, lineHeight: 19 },
-  tileRow: { flexDirection: "row", paddingHorizontal: spacing.md, gap: 8 },
+  tileRow: { flexDirection: "row", paddingHorizontal: spacing.md, gap: 8, marginTop: spacing.md },
   tile: { flex: 1, backgroundColor: colors.bg2, padding: spacing.md, borderRadius: radius.lg },
   tileLabel: { fontSize: 9, fontWeight: "900", color: colors.textMuted, letterSpacing: 1 },
   tileValue: { fontSize: 18, fontWeight: "900", color: colors.text, marginTop: 4 },

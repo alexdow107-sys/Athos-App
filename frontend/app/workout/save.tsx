@@ -12,6 +12,8 @@ import { useWorkout } from "@/src/context/WorkoutContext";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
 import { fmtDuration, fmtVolume } from "@/src/utils/format";
+import { hapticSuccess } from "@/src/utils/haptics";
+import { PRCelebration } from "@/src/components/PRCelebration";
 
 type Visibility = "public" | "private";
 
@@ -26,6 +28,7 @@ export default function SaveWorkoutScreen() {
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [visSheetOpen, setVisSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [prs, setPrs] = useState<any[] | null>(null);
 
   if (!active) {
     return (
@@ -91,31 +94,34 @@ export default function SaveWorkoutScreen() {
         photos,
         visibility,
       });
-      if (r?.prs?.length && visibility === "public") {
-        Alert.alert(
-          "🏆 New PR!",
-          r.prs.map((p: any) => `${p.exercise_name}: ${Math.round(p.estimated_1rm)} ${user?.weight_unit || "kg"}`).join("\n"),
-        );
+      if (r?.prs?.length) {
+        // Celebrate the PR (any visibility — it's the user's own achievement).
+        // The overlay handles navigation when dismissed, so keep `saving` true.
+        hapticSuccess();
+        setPrs(r.prs);
+        return;
       }
       router.replace("/(tabs)" as any);
     } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Could not save workout");
-    } finally {
+      const msg = e?.message || "Could not save workout";
+      if (Platform.OS === "web") window.alert("Failed: " + msg);
+      else Alert.alert("Failed", msg);
       setSaving(false);
     }
   };
 
   const onDiscard = () => {
+    const doDiscard = async () => {
+      await cancelWorkout();
+      router.replace("/(tabs)" as any);
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm("Discard workout? All progress will be lost.")) doDiscard();
+      return;
+    }
     Alert.alert("Discard workout?", "All progress will be lost", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Discard",
-        style: "destructive",
-        onPress: async () => {
-          await cancelWorkout();
-          router.replace("/(tabs)" as any);
-        },
-      },
+      { text: "Discard", style: "destructive", onPress: doDiscard },
     ]);
   };
 
@@ -273,6 +279,13 @@ export default function SaveWorkoutScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <PRCelebration
+        visible={!!prs}
+        prs={prs || []}
+        weightUnit={user?.weight_unit || "kg"}
+        onClose={() => router.replace("/(tabs)" as any)}
+      />
     </SafeAreaView>
   );
 }
@@ -339,7 +352,7 @@ const styles = StyleSheet.create({
   discardBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     marginTop: spacing.xl, padding: spacing.md, borderRadius: radius.md,
-    borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FEF2F2",
+    borderWidth: 1, borderColor: "rgba(192,64,64,0.40)", backgroundColor: "rgba(192,64,64,0.10)",
   },
   discardText: { color: colors.danger, fontWeight: "800", fontSize: 14 },
 

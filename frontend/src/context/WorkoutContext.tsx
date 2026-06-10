@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { storage } from "@/src/utils/storage";
 import { api } from "@/src/api/client";
+import { hapticLight } from "@/src/utils/haptics";
+import {
+  ensureChannel,
+  requestNotificationPermission,
+  showWorkoutNotification,
+  showRestNotification,
+  scheduleRestEndNotification,
+  cancelRestEndNotification,
+  clearWorkoutNotifications,
+} from "@/src/utils/workoutNotification";
 
 export interface SetData {
   weight?: number;
@@ -69,6 +79,11 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [rest, setRest] = useState<RestTimer | null>(null);
   const [restRemaining, setRestRemaining] = useState(0);
   const tickRef = useRef<any>(null);
+  const notifTickRef = useRef<any>(null);  // updates lock-screen notification ~every 60 s
+  const lastNotifElapsed = useRef<number>(-1);
+  // Always-current ref so cancelWorkout never uses a stale closure
+  const activeRef = useRef<ActiveWorkout | null>(null);
+  activeRef.current = active;
 
   // Persist active workout
   const setActive = useCallback((a: ActiveWorkout | null) => {
@@ -110,6 +125,10 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   useEffect(() => {
+    // Request notification permission once on startup
+    ensureChannel();
+    requestNotificationPermission();
+
     refresh();
     // Restore rest timer
     (async () => {
@@ -141,12 +160,36 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (remain === 0) {
           setRest(null);
           storage.removeItem(REST_KEY);
+          // Rest finished — switch notification back to plain workout display
+          if (active) {
+            const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
+            showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
+          }
         }
       } else {
         setRestRemaining(0);
       }
     }, 1000);
     return () => clearInterval(tickRef.current);
+  }, [active, rest]);
+
+  // Update lock-screen notification roughly every 60 s while workout is active
+  useEffect(() => {
+    if (notifTickRef.current) clearInterval(notifTickRef.current);
+    if (!active) {
+      lastNotifElapsed.current = -1;
+      return;
+    }
+    notifTickRef.current = setInterval(() => {
+      if (!active?.started_at || rest) return; // rest notification is handled separately
+      const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
+      // Only update if elapsed changed by at least 60 s (avoids hammering the API)
+      if (el - lastNotifElapsed.current >= 60) {
+        lastNotifElapsed.current = el;
+        showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
+      }
+    }, 15000); // check every 15 s, only sends a new notification every ~60 s
+    return () => clearInterval(notifTickRef.current);
   }, [active, rest]);
 
   const startWorkout = async (name?: string) => {
@@ -162,6 +205,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       started_at: r.workout.started_at,
     };
     setActive(w);
+    // Show lock-screen notification immediately
+    showWorkoutNotification({ workoutName: w.name, elapsedSeconds: 0, exerciseCount: 0 });
+    lastNotifElapsed.current = 0;
     return w;
   };
 
@@ -182,16 +228,23 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
     setActive(null);
     stopRestTimer();
+    clearWorkoutNotifications();
     return r;
   };
 
   const cancelWorkout = async () => {
-    if (!active) return;
-    try {
-      await api(`/workouts/${active.workout_id}`, { method: "DELETE" });
-    } catch {}
-    setActive(null);
-    stopRestTimer();
+    const workout = activeRef.current;
+    if (!workout) return;
+    // Clear all state immediately — use direct setters to avoid any closure issues
+    setActiveState(null);
+    activeRef.current = null;
+    storage.removeItem(ACTIVE_KEY);
+    setRest(null);
+    storage.removeItem(REST_KEY);
+    clearWorkoutNotifications().catch(() => {});
+    cancelRestEndNotification().catch(() => {});
+    // Fire delete in background — UI is already cleared regardless
+    api(`/workouts/${workout.workout_id}`, { method: "DELETE" }).catch(() => {});
   };
 
   const update = (mutator: (w: ActiveWorkout) => ActiveWorkout) => {
@@ -285,19 +338,33 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const newCompleted = !set?.completed;
     updateSet(i, si, { completed: newCompleted });
     if (newCompleted) {
+      hapticLight();
       startRestTimer(ex.rest_seconds || 90);
     }
   };
 
   const startRestTimer = (seconds: number) => {
-    const r: RestTimer = { end_at: Date.now() + seconds * 1000, duration: seconds };
+    const endAt = Date.now() + seconds * 1000;
+    const r: RestTimer = { end_at: endAt, duration: seconds };
     setRest(r);
     storage.setItem(REST_KEY, JSON.stringify(r) as any);
+    // Update notification to show rest countdown + schedule the "rest over" alert
+    if (active) {
+      const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
+      showRestNotification({ workoutName: active.name, elapsedSeconds: el, restRemaining: seconds });
+      scheduleRestEndNotification({ workoutName: active.name, restEndMs: endAt });
+    }
   };
 
   const stopRestTimer = () => {
     setRest(null);
     storage.removeItem(REST_KEY);
+    cancelRestEndNotification();
+    // Switch notification back to plain workout display
+    if (active) {
+      const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
+      showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
+    }
   };
 
   return (

@@ -66,14 +66,20 @@ export default function ActiveWorkoutScreen() {
   };
 
   const onDiscard = () => {
+    if (Platform.OS === "web") {
+      if (!window.confirm("Discard workout? All progress will be lost.")) return;
+      cancelWorkout();
+      router.replace("/(tabs)/workout" as any);
+      return;
+    }
     Alert.alert("Discard workout?", "All progress will be lost", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Discard",
         style: "destructive",
-        onPress: async () => {
-          await cancelWorkout();
-          router.back();
+        onPress: () => {
+          cancelWorkout();
+          router.replace("/(tabs)/workout" as any);
         },
       },
     ]);
@@ -444,7 +450,7 @@ const styles = StyleSheet.create({
   setHeaderRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.divider },
   setColLabel: { color: colors.textMuted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8, textAlign: "center" },
   setRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.divider },
-  setRowCompleted: { backgroundColor: "#F0FDF4" },
+  setRowCompleted: { backgroundColor: "rgba(61,122,82,0.18)" },
   setIndex: { width: 28, textAlign: "center", color: colors.textSecondary, fontWeight: "800", fontSize: 14 },
   setInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingVertical: 8, paddingHorizontal: 4, textAlign: "center", fontSize: 15, fontWeight: "700", color: colors.text, backgroundColor: colors.bg },
   uniGroup: { flexDirection: "row", alignItems: "center", paddingHorizontal: 4 },

@@ -34,6 +34,36 @@ export const fmtDate = (date: string | Date): string => {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 };
 
+const KM_TO_MI = 0.621371;
+
+/** Format a distance stored in km, displaying in the user's preferred unit. */
+export const fmtDistance = (km: number | null | undefined, unit: "km" | "mi" = "km"): string => {
+  if (km == null) return "";
+  if (unit === "mi") {
+    const mi = km * KM_TO_MI;
+    return `${mi < 10 ? mi.toFixed(2) : mi.toFixed(1)} mi`;
+  }
+  return `${km < 10 ? km.toFixed(2) : km.toFixed(1)} km`;
+};
+
+/** Convert a user-entered distance value to km for storage. */
+export const toKm = (value: number, unit: "km" | "mi"): number =>
+  unit === "mi" ? value / KM_TO_MI : value;
+
+/** Convert a stored km value to the display unit. */
+export const fromKm = (km: number, unit: "km" | "mi"): number =>
+  unit === "mi" ? km * KM_TO_MI : km;
+
+/** Format pace (duration in seconds, distance in km) as min/km or min/mi. */
+export const fmtPace = (durationSec: number, distanceKm: number, unit: "km" | "mi" = "km"): string => {
+  if (!distanceKm || !durationSec) return "";
+  const distInUnit = unit === "mi" ? distanceKm * KM_TO_MI : distanceKm;
+  const minPerUnit = durationSec / 60 / distInUnit;
+  const m = Math.floor(minPerUnit);
+  const s = Math.round((minPerUnit - m) * 60);
+  return `${m}:${String(s).padStart(2, "0")} /${unit}`;
+};
+
 export const initials = (name: string): string => {
   if (!name) return "?";
   return name

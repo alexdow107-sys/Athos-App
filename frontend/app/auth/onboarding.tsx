@@ -46,7 +46,7 @@ export default function OnboardingScreen() {
         method: "POST",
         body: JSON.stringify({
           date_of_birth: dob ? dob.toISOString().split("T")[0] : null,
-          age: dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : (age ? parseInt(age, 10) : null),
+          age: dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null,
           height_unit: heightUnit,
           weight_unit: weightUnit,
           height: height ? parseFloat(height) : null,
