@@ -8,7 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radius, spacing } from "@/src/theme";
 import { api } from "@/src/api/client";
-import { toKm, fromKm } from "@/src/utils/format";
+import { toKm, fromKm, localDateStr } from "@/src/utils/format";
 import { useAuth } from "@/src/context/AuthContext";
 
 const CARDIO_TYPES = [
@@ -37,7 +37,7 @@ export default function EditCardioScreen() {
   const [seconds, setSeconds] = useState("0");
   const [distanceKm, setDistanceKm] = useState("");
   const [notes, setNotes] = useState("");
-  const [dateStr, setDateStr] = useState(new Date().toISOString().slice(0, 10));
+  const [dateStr, setDateStr] = useState(localDateStr());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function EditCardioScreen() {
         setDistanceKm("");
       }
       setNotes(c.notes || "");
-      setDateStr(c.date || new Date().toISOString().slice(0, 10));
+      setDateStr(c.date || localDateStr());
     }).catch(() => {}).finally(() => setLoading(false));
   }, [id]);
 

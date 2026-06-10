@@ -164,6 +164,7 @@ class WorkoutCreateIn(BaseModel):
     name: str = "Workout"
     notes: Optional[str] = None
     activity_type: str = "lifting"  # lifting | cardio | sports | other
+    local_date: Optional[str] = None  # client's local date YYYY-MM-DD; falls back to UTC
 
 
 class WorkoutFinishIn(BaseModel):
@@ -814,7 +815,9 @@ async def start_workout(body: WorkoutCreateIn, current=Depends(get_current_user)
         "exercises": [],
         "started_at": now_utc(),
         "ended_at": None,
-        "date": now_utc().date().isoformat(),
+        # Day the workout belongs to, in the user's LOCAL timezone (sent by client).
+        # Falls back to the UTC date for older clients that don't send it.
+        "date": body.local_date or now_utc().date().isoformat(),
         "duration_seconds": 0,
         "created_at": now_utc(),
     }

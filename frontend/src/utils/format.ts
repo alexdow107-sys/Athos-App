@@ -34,6 +34,20 @@ export const fmtDate = (date: string | Date): string => {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 };
 
+/**
+ * Today's date (or a given date) as YYYY-MM-DD in the device's LOCAL timezone.
+ *
+ * Use this instead of `new Date().toISOString().slice(0, 10)` — `toISOString()`
+ * returns the UTC date, which lands on the wrong day for users behind/ahead of
+ * UTC (e.g. an evening workout in the Americas gets stored as the next day).
+ */
+export const localDateStr = (date: Date = new Date()): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
 const KM_TO_MI = 0.621371;
 
 /** Format a distance stored in km, displaying in the user's preferred unit. */

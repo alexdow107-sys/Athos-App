@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { storage } from "@/src/utils/storage";
 import { api } from "@/src/api/client";
 import { hapticLight } from "@/src/utils/haptics";
+import { localDateStr } from "@/src/utils/format";
 import {
   ensureChannel,
   requestNotificationPermission,
@@ -195,7 +196,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const startWorkout = async (name?: string) => {
     const r = await api<{ workout: any }>("/workouts/start", {
       method: "POST",
-      body: JSON.stringify({ name: name || "Workout" }),
+      body: JSON.stringify({ name: name || "Workout", local_date: localDateStr() }),
     });
     const w: ActiveWorkout = {
       workout_id: r.workout.workout_id,

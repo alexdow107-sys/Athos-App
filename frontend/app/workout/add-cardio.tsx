@@ -8,7 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radius, spacing } from "@/src/theme";
 import { api } from "@/src/api/client";
-import { toKm } from "@/src/utils/format";
+import { toKm, localDateStr } from "@/src/utils/format";
 import { useAuth } from "@/src/context/AuthContext";
 
 const CARDIO_TYPES = [
@@ -45,7 +45,7 @@ export default function AddCardioScreen() {
   const [saving, setSaving] = useState(false);
   const [distanceKm, setDistanceKm] = useState("");
   const [notes, setNotes] = useState("");
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = localDateStr();
   const [dateStr, setDateStr] = useState(todayStr);
 
   // ── Timer mode state ──
