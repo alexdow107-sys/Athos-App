@@ -1,6 +1,33 @@
+import { Platform } from "react-native";
+import Constants from "expo-constants";
+
 import { storage } from "@/src/utils/storage";
 
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
+/**
+ * Resolve the backend base URL.
+ *
+ * On a physical device or emulator, "localhost"/"127.0.0.1" point at the device
+ * itself — not your dev machine — so a localhost backend URL is unreachable and
+ * every request fails. In that case we swap in the Expo dev server's host (the
+ * LAN IP that served the JS bundle), keeping the configured port. On web, or
+ * when a real host is configured (e.g. production), the URL is used as-is.
+ */
+function resolveBaseUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  if (Platform.OS === "web") return configured;
+  if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(configured)) return configured;
+  const c: any = Constants;
+  const hostUri: string | undefined =
+    c.expoConfig?.hostUri ||
+    c.expoGoConfig?.hostUri ||
+    c.manifest2?.extra?.expoClient?.hostUri ||
+    c.manifest?.hostUri;
+  const host = hostUri?.split(":")[0];
+  if (!host) return configured;
+  return configured.replace(/(localhost|127\.0\.0\.1)/i, host);
+}
+
+const BASE = resolveBaseUrl();
 
 const TOKEN_KEY = "atho_token";
 

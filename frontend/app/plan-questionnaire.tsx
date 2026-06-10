@@ -111,7 +111,7 @@ export default function PlanQuestionnaireScreen() {
       router.replace("/plan");
     } catch (e: any) {
       const msg = e?.message || "Try again";
-      if (typeof window !== "undefined") window.alert(`Couldn't save: ${msg}`);
+      if (Platform.OS === "web") window.alert(`Couldn't save: ${msg}`);
       else Alert.alert("Couldn't save", msg);
     } finally {
       setSaving(false);

@@ -19,7 +19,7 @@ export default function ActiveWorkoutScreen() {
     active, elapsed, restRemaining, restDuration,
     addSet, removeSet, updateSet, completeSet,
     removeExercise, updateExercise, startRestTimer, stopRestTimer,
-    finishWorkout, cancelWorkout,
+    cancelWorkout, setActive,
   } = useWorkout();
 
   const [finishing, setFinishing] = useState(false);
@@ -85,11 +85,12 @@ export default function ActiveWorkoutScreen() {
     ]);
   };
 
-  const onSaveName = async () => {
-    updateExercise; // unused noop ref
-    if (active && name !== active.name) {
-      // Update locally only; final name sent at finish
-      // We use updateExercise side-effect via context update; we'll use setActive directly via name change
+  // Persist a renamed workout back into the active-workout context (+ storage)
+  // so the save screen and finish payload use the new name instead of the original.
+  const persistName = () => {
+    const trimmed = name.trim();
+    if (active && trimmed && trimmed !== active.name) {
+      setActive({ ...active, name: trimmed });
     }
   };
 
@@ -128,8 +129,8 @@ export default function ActiveWorkoutScreen() {
           <TextInput
             testID="workout-name-input"
             value={name}
-            onChangeText={(t) => { setName(t); updateExercise; }}
-            onBlur={() => { /* name persisted at finish */ }}
+            onChangeText={setName}
+            onBlur={persistName}
             placeholder="Workout name"
             placeholderTextColor={colors.textMuted}
             style={styles.nameInput}
