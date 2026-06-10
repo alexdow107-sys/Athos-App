@@ -49,6 +49,20 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def coerce_dt(v) -> Optional[datetime]:
+    """Posts store created_at as a datetime (workouts) or ISO string (cardio).
+    Normalize to an aware datetime for comparisons; return None if unparseable."""
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    if isinstance(v, str):
+        try:
+            d = datetime.fromisoformat(v.replace("Z", "+00:00"))
+            return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    return None
+
+
 def gen_id(prefix: str = "id") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:16]}"
 
@@ -1126,21 +1140,102 @@ async def get_feed(limit: int = 30, current=Depends(get_current_user)):
 
 @api.get("/feed/explore")
 async def explore_feed(limit: int = 30, current=Depends(get_current_user_optional)):
-    """Public posts from anyone (non-private accounts)."""
-    cursor = db.posts.find({"visibility": "public"}, {"_id": 0}).sort("created_at", -1).limit(limit * 2)
-    posts = []
-    async for p in cursor:
+    """
+    Discover public posts from accounts you DON'T already follow, ranked by how
+    close they are to your own activity:
+      - creators whose posts you've liked/saved before (engagement affinity),
+      - workouts that share exercises with your own training (content overlap),
+      - your lifting/cardio mix,
+    then popularity and recency. Logged-out users get popular, recent public posts.
+    """
+    excluded_ids = set()       # self + people you already follow
+    interest_authors = set()   # creators whose posts you've liked/saved
+    my_exercises = set()       # exercise_ids you train
+    does_cardio = False
+    does_lifting = False
+
+    if current:
+        uid = current["user_id"]
+        excluded_ids.add(uid)
+        async for f in db.follows.find(
+            {"follower_id": uid, "status": "accepted"}, {"following_id": 1}
+        ):
+            excluded_ids.add(f["following_id"])
+
+        # Engagement affinity — authors of posts you've liked or saved
+        engaged_post_ids = set()
+        async for l in db.likes.find({"user_id": uid}, {"post_id": 1}).limit(300):
+            engaged_post_ids.add(l["post_id"])
+        async for s in db.saves.find({"user_id": uid}, {"post_id": 1}).limit(300):
+            engaged_post_ids.add(s["post_id"])
+        if engaged_post_ids:
+            async for p in db.posts.find(
+                {"post_id": {"$in": list(engaged_post_ids)}}, {"user_id": 1}
+            ):
+                interest_authors.add(p["user_id"])
+
+        # Content overlap — exercises you actually train
+        async for w in db.workouts.find(
+            {"user_id": uid, "status": "completed"}, {"exercises.exercise_id": 1}
+        ).sort("started_at", -1).limit(40):
+            does_lifting = True
+            for ex in (w.get("exercises") or []):
+                if ex.get("exercise_id"):
+                    my_exercises.add(ex["exercise_id"])
+        does_cardio = bool(await db.cardio.find_one({"user_id": uid}, {"_id": 1}))
+
+    # Candidate pool: recent public posts not from excluded users
+    query: Dict[str, Any] = {"visibility": "public"}
+    if excluded_ids:
+        query["user_id"] = {"$nin": list(excluded_ids)}
+    candidates = [
+        p async for p in db.posts.find(query, {"_id": 0})
+        .sort("created_at", -1).limit(max(limit * 4, 100))
+    ]
+
+    now_ts = now_utc()
+    scored = []
+    for p in candidates:
         u = await db.users.find_one({"user_id": p["user_id"]}, {"_id": 0})
         if not u or u.get("is_private"):
             continue
-        liked = False
-        saved = False
+        score = 0.0
+        # Engagement affinity with this creator
+        if p["user_id"] in interest_authors:
+            score += 5.0
+        # Exercise overlap with your training (workout posts only)
+        if my_exercises and p.get("workout_id"):
+            w = await db.workouts.find_one(
+                {"workout_id": p["workout_id"]}, {"exercises.exercise_id": 1}
+            )
+            if w:
+                post_ex = {ex.get("exercise_id") for ex in (w.get("exercises") or [])}
+                overlap = len(post_ex & my_exercises)
+                if overlap:
+                    score += min(overlap, 5) * 1.5
+        # Activity-type affinity (covers cardio posts, which have no exercises)
+        is_cardio_post = p.get("post_type") == "cardio" or bool(p.get("cardio_id"))
+        if is_cardio_post and does_cardio:
+            score += 2.0
+        elif not is_cardio_post and does_lifting:
+            score += 1.0
+        # Popularity + recency
+        score += min(p.get("likes_count", 0), 25) * 0.2
+        created = coerce_dt(p.get("created_at"))
+        if created:
+            age_days = max((now_ts - created).total_seconds() / 86400.0, 0.0)
+            score += max(0.0, 3.0 - age_days)  # recency bonus, decays over ~3 days
+        scored.append((score, p, u))
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    posts = []
+    for _score, p, u in scored[:limit]:
+        liked = saved = False
         if current:
             liked = bool(await db.likes.find_one({"post_id": p["post_id"], "user_id": current["user_id"]}))
             saved = bool(await db.saves.find_one({"post_id": p["post_id"], "user_id": current["user_id"]}))
         posts.append({**p, "user": public_user(u), "liked": liked, "saved": saved})
-        if len(posts) >= limit:
-            break
     return {"posts": posts}
 
 
