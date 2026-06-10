@@ -12,6 +12,9 @@ import { colors, radius, spacing } from "@/src/theme";
 import { Avatar } from "@/src/components/Avatar";
 import { fmtDuration, fmtVolume, fmtRelative, fmtDistance } from "@/src/utils/format";
 import { useAuth } from "@/src/context/AuthContext";
+import { hapticSelection } from "@/src/utils/haptics";
+
+type FollowStatus = "accepted" | "pending";
 
 const { width: SW } = Dimensions.get("window");
 
@@ -46,12 +49,16 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unread, setUnread] = useState(0);
+  // Local follow state for Explore cards, keyed by user_id (Explore only ever
+  // shows accounts you don't follow yet, so this starts empty on each load).
+  const [followMap, setFollowMap] = useState<Record<string, FollowStatus>>({});
 
   const load = useCallback(async () => {
     try {
       const path = tab === "following" ? "/feed" : "/feed/explore";
       const r = await api<{ posts: Post[] }>(path);
       setPosts(r.posts);
+      setFollowMap({});
       const m = await api<{ count: number }>("/conversations/unread-count").catch(() => ({ count: 0 }));
       setUnread(m.count);
     } catch (e: any) {
@@ -100,6 +107,25 @@ export default function FeedScreen() {
     } catch { load(); }
   };
 
+  const onToggleFollow = async (targetId: string) => {
+    const current = followMap[targetId];
+    if (current) {
+      // Unfollow / cancel request — optimistic
+      setFollowMap(m => { const n = { ...m }; delete n[targetId]; return n; });
+      try { await api(`/users/${targetId}/follow`, { method: "DELETE" }); }
+      catch { setFollowMap(m => ({ ...m, [targetId]: current })); }
+    } else {
+      hapticSelection();
+      setFollowMap(m => ({ ...m, [targetId]: "accepted" }));
+      try {
+        const r = await api<{ status: FollowStatus }>(`/users/${targetId}/follow`, { method: "POST" });
+        setFollowMap(m => ({ ...m, [targetId]: r.status || "accepted" }));
+      } catch {
+        setFollowMap(m => { const n = { ...m }; delete n[targetId]; return n; });
+      }
+    }
+  };
+
   const storyUsers = React.useMemo(() => {
     const seen = new Set<string>();
     const out: any[] = [];
@@ -146,6 +172,7 @@ export default function FeedScreen() {
     const hasDistance = distanceKm != null;
     const weightUnit = user?.weight_unit || "kg";
     const distUnit = (user?.distance_unit as any) || "km";
+    const followStatus = followMap[p.user_id];
 
     return (
       <View style={styles.card}>
@@ -166,12 +193,25 @@ export default function FeedScreen() {
             </View>
             <Text style={styles.postTime}>{fmtRelative(p.created_at)}</Text>
           </View>
-          {p.user_id === user?.user_id
-            ? <TouchableOpacity onPress={() => onDeletePost(p)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="trash-outline" size={18} color="#C04040" />
+          {p.user_id === user?.user_id ? (
+            <TouchableOpacity onPress={() => onDeletePost(p)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="trash-outline" size={18} color="#C04040" />
+            </TouchableOpacity>
+          ) : tab === "explore" ? (
+            followStatus ? (
+              <TouchableOpacity testID={`following-${p.user_id}`} onPress={() => onToggleFollow(p.user_id)} style={styles.followingPill} activeOpacity={0.8}>
+                <Ionicons name={followStatus === "pending" ? "time-outline" : "checkmark"} size={13} color="#888" />
+                <Text style={styles.followingPillText}>{followStatus === "pending" ? "Requested" : "Following"}</Text>
               </TouchableOpacity>
-            : <Ionicons name="ellipsis-horizontal" size={18} color="#555" />
-          }
+            ) : (
+              <TouchableOpacity testID={`follow-${p.user_id}`} onPress={() => onToggleFollow(p.user_id)} style={styles.followPill} activeOpacity={0.8}>
+                <Ionicons name="add" size={15} color={colors.textInverse} />
+                <Text style={styles.followPillText}>Follow</Text>
+              </TouchableOpacity>
+            )
+          ) : (
+            <Ionicons name="ellipsis-horizontal" size={18} color="#555" />
+          )}
         </TouchableOpacity>
 
         {/* Workout name + caption */}
@@ -399,6 +439,19 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   liveTagText: { color: "#000", fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
+
+  followPill: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
+    backgroundColor: colors.brand,
+  },
+  followPillText: { color: colors.textInverse, fontWeight: "800", fontSize: 12 },
+  followingPill: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
+    borderWidth: 1, borderColor: LINE, backgroundColor: "transparent",
+  },
+  followingPillText: { color: "#888", fontWeight: "700", fontSize: 12 },
 
   postBody: { paddingHorizontal: spacing.md, paddingBottom: 12 },
   workoutTitle: { fontSize: 20, fontWeight: "900", color: "#FFFFFF", letterSpacing: -0.4, lineHeight: 26 },
