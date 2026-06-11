@@ -19,7 +19,7 @@ export default function ExerciseDetailScreen() {
   const load = useCallback(async () => {
     try {
       const [d, h] = await Promise.all([
-        api<any>(`/analytics/exercise/${id}`),
+        api<any>(`/analytics/exercise/${id}`).catch(() => null),  // premium-only; ok if it 402s
         api<any>(`/exercises/${id}/history`),
       ]);
       setData(d);
@@ -68,6 +68,18 @@ export default function ExerciseDetailScreen() {
             <Text style={styles.statUnit}>total</Text>
           </View>
         </View>
+
+        {history?.stall?.stalled && (
+          <View style={styles.progressCard}>
+            <Ionicons name="trending-up" size={20} color={colors.brand} />
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={styles.progressTitle}>Time to add weight</Text>
+              <Text style={styles.progressText}>
+                Stuck at {history.stall.weight} {history.stall.unit} × {history.stall.reps} for ~{history.stall.weeks} week{history.stall.weeks !== 1 ? "s" : ""} ({history.stall.sessions} sessions). Try {history.stall.suggested_weight} {history.stall.unit} for fewer reps, then build back up to break the plateau and get used to the heavier load.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {data?.plateau_sessions > 0 && (
           <View style={styles.plateauCard}>
@@ -135,6 +147,9 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, fontWeight: "900", color: colors.textMuted, letterSpacing: 1 },
   statValue: { fontSize: 22, fontWeight: "900", color: colors.text, marginTop: 4 },
   statUnit: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  progressCard: { flexDirection: "row", margin: spacing.md, padding: spacing.md, backgroundColor: colors.brandLight, borderWidth: 1, borderColor: "rgba(107,197,222,0.35)", borderRadius: radius.lg, alignItems: "flex-start" },
+  progressTitle: { color: colors.brand, fontWeight: "800" },
+  progressText: { color: colors.text, fontSize: 12, marginTop: 2, lineHeight: 17 },
   plateauCard: { flexDirection: "row", margin: spacing.md, padding: spacing.md, backgroundColor: "rgba(200,154,58,0.10)", borderWidth: 1, borderColor: "rgba(200,154,58,0.28)", borderRadius: radius.lg, alignItems: "flex-start" },
   plateauTitle: { color: colors.warning, fontWeight: "800" },
   plateauText: { color: colors.text, fontSize: 12, marginTop: 2 },

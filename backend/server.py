@@ -755,6 +755,65 @@ async def create_custom_exercise(body: ExerciseCreateIn, current=Depends(get_cur
     return {"exercise": doc}
 
 
+def detect_weight_stall(sessions: List[dict], weight_unit: str) -> Optional[dict]:
+    """
+    Flag when the top working set's weight (and reps) hasn't progressed for at
+    least 3 sessions spanning ~3+ weeks — the classic plateau — and suggest
+    bumping the weight to break the cycle.
+
+    `sessions` is newest-first (as returned by exercise_history). Returns a
+    suggestion dict, or None if there's no stall.
+    """
+    tops = []  # (date, top_weight, reps_at_top_weight), newest-first
+    for s in sessions:
+        top = None
+        for st in s.get("sets", []):
+            if st.get("weight") is not None:
+                w_, r_ = st.get("weight") or 0, st.get("reps") or 0
+            else:  # unilateral — use the heavier side
+                lw, lr = st.get("left_weight") or 0, st.get("left_reps") or 0
+                rw, rr = st.get("right_weight") or 0, st.get("right_reps") or 0
+                w_, r_ = (lw, lr) if lw >= rw else (rw, rr)
+            if w_ and w_ > 0 and (top is None or w_ > top[0]):
+                top = (w_, r_)
+        d = coerce_dt(s.get("date"))
+        if top and d:
+            tops.append((d, top[0], top[1]))
+
+    if len(tops) < 3:
+        return None
+
+    # Streak of the most-recent consecutive sessions at the same top weight.
+    cur_weight = tops[0][1]
+    streak = []
+    for (d, w_, r_) in tops:
+        if abs(w_ - cur_weight) < 1e-6:
+            streak.append((d, w_, r_))
+        else:
+            break  # they went heavier/lighter — not a flat stall
+
+    if len(streak) < 3:
+        return None
+    span_days = (streak[0][0] - streak[-1][0]).total_seconds() / 86400.0
+    if span_days < 21:  # under ~3 weeks
+        return None
+    # If reps are still climbing at this weight, that's genuine (double) progression.
+    if streak[0][2] > streak[-1][2] + 1:
+        return None
+
+    step = 2.5 if (weight_unit or "kg") == "kg" else 5
+    suggested = round((cur_weight + step) * 100) / 100
+    return {
+        "stalled": True,
+        "weight": cur_weight,
+        "reps": streak[0][2],
+        "sessions": len(streak),
+        "weeks": round(span_days / 7.0),
+        "suggested_weight": suggested,
+        "unit": weight_unit or "kg",
+    }
+
+
 @api.get("/exercises/{exercise_id}/history")
 async def exercise_history(exercise_id: str, current=Depends(get_current_user)):
     """Aggregate history for an exercise — used by workout logger.
@@ -801,12 +860,15 @@ async def exercise_history(exercise_id: str, current=Depends(get_current_user)):
                 "volume": session_volume,
             })
 
+    stall = detect_weight_stall(sessions, current.get("weight_unit", "kg"))
+
     return {
         "sessions": sessions,
         "last_session": sessions[0] if sessions else None,
         "personal_record": {"estimated_1rm": best_1rm, "set": best_set} if best_set else None,
         "lifetime_volume": lifetime_volume,
         "session_count": len(sessions),
+        "stall": stall,
     }
 
 
