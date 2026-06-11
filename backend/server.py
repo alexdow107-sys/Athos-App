@@ -1175,7 +1175,7 @@ async def post_cardio(cardio_id: str, body: CardioPostIn, current=Depends(get_cu
         "prs": [],
         "likes_count": existing.get("likes_count", 0) if existing else 0,
         "comments_count": existing.get("comments_count", 0) if existing else 0,
-        "created_at": existing["created_at"] if existing else datetime.utcnow().isoformat(),
+        "created_at": existing["created_at"] if existing else now_utc(),
         "post_type": "cardio",
     }
     await db.posts.replace_one({"post_id": post_id}, doc, upsert=True)
