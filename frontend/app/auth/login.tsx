@@ -1,11 +1,9 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform,
-  ScrollView, TouchableOpacity, ActivityIndicator, Alert,
+  ScrollView, TouchableOpacity,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/context/AuthContext";
@@ -14,12 +12,11 @@ import { Logo } from "@/src/components/Logo";
 import { colors, radius, spacing } from "@/src/theme";
 
 export default function LoginScreen() {
-  const { login, googleSession } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onLogin = async () => {
@@ -38,43 +35,6 @@ export default function LoginScreen() {
       setError(e.message || "Login failed");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const onGoogle = async () => {
-    setGoogleLoading(true);
-    setError(null);
-    try {
-      const redirectUrl = Platform.OS === "web" && typeof window !== "undefined"
-        ? window.location.origin + "/"
-        : Linking.createURL("auth");
-      const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        window.location.href = authUrl;
-        return;
-      }
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-      if (result.type === "success" && result.url) {
-        let sid: string | null = null;
-        if (result.url.includes("#session_id=")) {
-          sid = result.url.split("#session_id=")[1].split("&")[0];
-        } else {
-          const parsed = Linking.parse(result.url);
-          sid = (parsed.queryParams?.session_id as string) || null;
-        }
-        if (sid) {
-          await googleSession(sid);
-          // Let index.tsx route based on needs_setup / onboarded flags
-          router.replace("/");
-        } else {
-          setError("Google sign-in failed");
-        }
-      }
-    } catch (e: any) {
-      setError(e.message || "Google sign-in failed");
-    } finally {
-      setGoogleLoading(false);
     }
   };
 
@@ -121,29 +81,6 @@ export default function LoginScreen() {
               <Button testID="login-submit-button" title="Sign in" onPress={onLogin} loading={loading} />
             </View>
 
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity
-              testID="login-google-button"
-              style={styles.googleBtn}
-              onPress={onGoogle}
-              disabled={googleLoading}
-              activeOpacity={0.7}
-            >
-              {googleLoading ? (
-                <ActivityIndicator color={colors.text} />
-              ) : (
-                <>
-                  <Text style={styles.googleG}>G</Text>
-                  <Text style={styles.googleText}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
             <View style={styles.signupRow}>
               <Text style={styles.signupText}>New to Athos? </Text>
               <Link href="/auth/signup" asChild>
@@ -174,15 +111,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   error: { color: colors.danger, marginTop: spacing.md, fontSize: 13, fontWeight: "600" },
-  divider: { flexDirection: "row", alignItems: "center", marginVertical: spacing.lg },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { marginHorizontal: 12, color: colors.textMuted, fontSize: 12, fontWeight: "700" },
-  googleBtn: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
-    paddingVertical: 13, alignItems: "center", justifyContent: "center", flexDirection: "row",
-  },
-  googleG: { fontSize: 18, fontWeight: "900", color: "#4285F4", marginRight: 10 },
-  googleText: { fontSize: 15, fontWeight: "700", color: colors.text },
   signupRow: { flexDirection: "row", justifyContent: "center", marginTop: spacing.xl },
   signupText: { color: colors.textMuted, fontSize: 14 },
   signupLink: { color: colors.brand, fontSize: 14, fontWeight: "700" },

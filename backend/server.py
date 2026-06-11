@@ -7,7 +7,6 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Header, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -91,15 +90,6 @@ class RegisterIn(BaseModel):
 
 class LoginIn(BaseModel):
     email: EmailStr
-    password: str
-
-
-class GoogleSessionIn(BaseModel):
-    session_id: str
-
-
-class GoogleCompleteSetupIn(BaseModel):
-    username: str
     password: str
 
 
@@ -394,82 +384,6 @@ async def login(body: LoginIn):
     return {"token": token, "user": public_user(clean(u))}
 
 
-@api.post("/auth/google/session")
-async def google_session(body: GoogleSessionIn):
-    """Exchange Emergent session_id for a session token + user."""
-    async with httpx.AsyncClient(timeout=15) as hc:
-        resp = await hc.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": body.session_id},
-        )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session")
-        data = resp.json()
-
-    email = data.get("email", "").lower()
-    name = data.get("name", "")
-    picture = data.get("picture")
-    session_token = data.get("session_token")
-    if not email or not session_token:
-        raise HTTPException(status_code=400, detail="Incomplete session data")
-
-    # Upsert user
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        uid = existing["user_id"]
-        # Sync picture if missing
-        if not existing.get("profile_picture") and picture:
-            await db.users.update_one({"user_id": uid}, {"$set": {"profile_picture": picture}})
-    else:
-        uid = gen_id("user")
-        # Generate username from email
-        base_username = re.sub(r"[^a-z0-9_]", "", email.split("@")[0].lower())[:15] or f"user{uid[-6:]}"
-        username = base_username
-        suffix = 0
-        while await db.users.find_one({"username": username}):
-            suffix += 1
-            username = f"{base_username}{suffix}"
-        await db.users.insert_one({
-            "user_id": uid,
-            "email": email,
-            "username": username,
-            "display_name": name or username,
-            "password_hash": None,
-            "auth_provider": "google",
-            "needs_setup": True,
-            "bio": "",
-            "profile_picture": picture,
-            "is_private": False,
-            "is_premium": False,
-            "hide_followers": False,
-            "show_workout_status": True,
-            "followers_count": 0,
-            "following_count": 0,
-            "workouts_count": 0,
-            "currently_working_out": False,
-            "height_unit": "cm",
-            "weight_unit": "kg",
-            "height": None,
-            "weight": None,
-            "onboarded": False,
-            "created_at": now_utc(),
-        })
-
-    # Store session
-    await db.user_sessions.update_one(
-        {"session_token": session_token},
-        {"$set": {
-            "session_token": session_token,
-            "user_id": uid,
-            "expires_at": now_utc() + timedelta(days=7),
-            "created_at": now_utc(),
-        }},
-        upsert=True,
-    )
-    u = await db.users.find_one({"user_id": uid}, {"_id": 0})
-    return {"token": session_token, "user": public_user(u)}
-
-
 @api.get("/auth/me")
 async def me(current=Depends(get_current_user)):
     return {"user": public_user(current)}
@@ -483,35 +397,6 @@ async def logout(authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
-# ===== GOOGLE COMPLETE SETUP =====
-@api.post("/auth/google/complete-setup")
-async def google_complete_setup(body: GoogleCompleteSetupIn, current=Depends(get_current_user)):
-    """For new Google users — set a password and choose a username."""
-    if not current.get("needs_setup"):
-        # Allow noop if already set up
-        return {"user": public_user(current)}
-    username = body.username.strip().lower()
-    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
-        raise HTTPException(status_code=400, detail="Username must be 3-20 chars, alphanumeric or underscore")
-    if len(body.password) < 8 or not re.search(r"[A-Za-z]", body.password) or not re.search(r"\d", body.password):
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters and contain letters + a number")
-    # Username uniqueness (allow current user's existing auto-generated one)
-    existing = await db.users.find_one({"username": username, "user_id": {"$ne": current["user_id"]}})
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already taken")
-    await db.users.update_one(
-        {"user_id": current["user_id"]},
-        {"$set": {
-            "username": username,
-            "password_hash": pwd_ctx.hash(body.password),
-            "needs_setup": False,
-        }},
-    )
-    u = await db.users.find_one({"user_id": current["user_id"]}, {"_id": 0})
-    return {"user": public_user(u)}
-
-
-# ===== ONBOARDING / PROFILE =====
 @api.post("/users/onboard")
 async def onboard(body: OnboardIn, current=Depends(get_current_user)):
     update = {k: v for k, v in body.dict().items() if v is not None}

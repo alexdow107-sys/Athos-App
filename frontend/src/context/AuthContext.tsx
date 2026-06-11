@@ -36,8 +36,6 @@ interface AuthCtx {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; username: string; display_name: string }) => Promise<void>;
-  googleSession: (session_id: string) => Promise<void>;
-  googleCompleteSetup: (data: { username: string; password: string }) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   setUser: (u: AthoUser | null) => void;
@@ -95,24 +93,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(r.user);
   };
 
-  const googleSession = async (session_id: string) => {
-    const r = await api<{ token: string; user: AthoUser }>("/auth/google/session", {
-      method: "POST",
-      body: JSON.stringify({ session_id }),
-      auth: false,
-    });
-    await setToken(r.token);
-    setUser(r.user);
-  };
-
-  const googleCompleteSetup = async (data: { username: string; password: string }) => {
-    const r = await api<{ user: AthoUser }>("/auth/google/complete-setup", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    setUser(r.user);
-  };
-
   const logout = async () => {
     try {
       await api("/auth/logout", { method: "POST" });
@@ -122,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, register, googleSession, googleCompleteSetup, refresh, logout, setUser }}>
+    <Ctx.Provider value={{ user, loading, login, register, refresh, logout, setUser }}>
       {children}
     </Ctx.Provider>
   );
