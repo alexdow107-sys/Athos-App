@@ -19,7 +19,7 @@ export default function ExerciseDetailScreen() {
   const load = useCallback(async () => {
     try {
       const [d, h] = await Promise.all([
-        api<any>(`/analytics/exercise/${id}`).catch(() => null),  // premium-only; ok if it 402s
+        api<any>(`/analytics/exercise/${id}`).catch(() => null),  // non-fatal if it errors
         api<any>(`/exercises/${id}/history`),
       ]);
       setData(d);
