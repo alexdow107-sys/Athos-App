@@ -13,6 +13,7 @@ import { Avatar } from "@/src/components/Avatar";
 import { fmtDuration, fmtVolume, fmtRelative, fmtDistance } from "@/src/utils/format";
 import { useAuth } from "@/src/context/AuthContext";
 import { hapticSelection } from "@/src/utils/haptics";
+import { ModerationSheet, ModTarget } from "@/src/components/ModerationSheet";
 
 type FollowStatus = "accepted" | "pending";
 
@@ -52,6 +53,7 @@ export default function FeedScreen() {
   // Local follow state for Explore cards, keyed by user_id (Explore only ever
   // shows accounts you don't follow yet, so this starts empty on each load).
   const [followMap, setFollowMap] = useState<Record<string, FollowStatus>>({});
+  const [modTarget, setModTarget] = useState<ModTarget | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -197,20 +199,25 @@ export default function FeedScreen() {
             <TouchableOpacity onPress={() => onDeletePost(p)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="trash-outline" size={18} color="#C04040" />
             </TouchableOpacity>
-          ) : tab === "explore" ? (
-            followStatus ? (
-              <TouchableOpacity testID={`following-${p.user_id}`} onPress={() => onToggleFollow(p.user_id)} style={styles.followingPill} activeOpacity={0.8}>
-                <Ionicons name={followStatus === "pending" ? "time-outline" : "checkmark"} size={13} color="#888" />
-                <Text style={styles.followingPillText}>{followStatus === "pending" ? "Requested" : "Following"}</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity testID={`follow-${p.user_id}`} onPress={() => onToggleFollow(p.user_id)} style={styles.followPill} activeOpacity={0.8}>
-                <Ionicons name="add" size={15} color={colors.textInverse} />
-                <Text style={styles.followPillText}>Follow</Text>
-              </TouchableOpacity>
-            )
           ) : (
-            <Ionicons name="ellipsis-horizontal" size={18} color="#555" />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {tab === "explore" && (followStatus ? (
+                <TouchableOpacity testID={`following-${p.user_id}`} onPress={() => onToggleFollow(p.user_id)} style={styles.followingPill} activeOpacity={0.8}>
+                  <Ionicons name={followStatus === "pending" ? "time-outline" : "checkmark"} size={13} color="#888" />
+                  <Text style={styles.followingPillText}>{followStatus === "pending" ? "Requested" : "Following"}</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity testID={`follow-${p.user_id}`} onPress={() => onToggleFollow(p.user_id)} style={styles.followPill} activeOpacity={0.8}>
+                  <Ionicons name="add" size={15} color={colors.textInverse} />
+                  <Text style={styles.followPillText}>Follow</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity testID={`post-menu-${p.post_id}`}
+                onPress={() => setModTarget({ kind: "post", postId: p.post_id, userId: p.user_id, username: u?.username, displayName: u?.display_name })}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
+                <Ionicons name="ellipsis-horizontal" size={18} color="#555" />
+              </TouchableOpacity>
+            </View>
           )}
         </TouchableOpacity>
 
@@ -384,6 +391,13 @@ export default function FeedScreen() {
           }
         />
       )}
+
+      <ModerationSheet
+        visible={!!modTarget}
+        target={modTarget}
+        onClose={() => setModTarget(null)}
+        onBlocked={(uid) => { setPosts(prev => prev.filter(p => p.user_id !== uid)); setModTarget(null); }}
+      />
     </SafeAreaView>
   );
 }

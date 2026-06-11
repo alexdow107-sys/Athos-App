@@ -9,6 +9,7 @@ import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
 import { Avatar } from "@/src/components/Avatar";
 import { ShareToChatSheet, SharePayload } from "@/src/components/ShareToChatSheet";
+import { ModerationSheet } from "@/src/components/ModerationSheet";
 import { fmtDuration, fmtVolume, fmtDate } from "@/src/utils/format";
 
 export default function UserProfileScreen() {
@@ -22,6 +23,7 @@ export default function UserProfileScreen() {
   const [busy, setBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+  const [modOpen, setModOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +75,17 @@ export default function UserProfileScreen() {
     } catch (e: any) { Alert.alert("Failed", e.message); }
   };
 
+  const onUnblock = async () => {
+    if (!profile) return;
+    setBusy(true);
+    try {
+      await api(`/users/${profile.user_id}/block`, { method: "DELETE" });
+      await load();
+    } catch (e: any) {
+      Alert.alert("Failed", e.message);
+    } finally { setBusy(false); }
+  };
+
   if (loading || !profile) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -84,7 +97,7 @@ export default function UserProfileScreen() {
   const followLabel = profile.is_following ? "Following" : profile.follow_pending ? "Requested" : "Follow";
   const followStyle = profile.is_following || profile.follow_pending ? styles.followBtnFollowing : styles.followBtnPrimary;
   const followTextStyle = profile.is_following || profile.follow_pending ? styles.followTextFollowing : styles.followTextPrimary;
-  const canView = !profile.is_private || profile.is_following || profile.is_self;
+  const canView = !profile.is_blocked && (!profile.is_private || profile.is_following || profile.is_self);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]} testID="user-profile-screen">
@@ -93,7 +106,13 @@ export default function UserProfileScreen() {
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>@{profile.username}</Text>
-        <View style={{ width: 36 }} />
+        {profile.is_self ? (
+          <View style={{ width: 36 }} />
+        ) : (
+          <TouchableOpacity testID="profile-menu-btn" onPress={() => setModOpen(true)} style={styles.iconBtn}>
+            <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
@@ -126,7 +145,7 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {!profile.is_self ? (
+          {!profile.is_self && !profile.is_blocked ? (
             <View style={styles.actions}>
               <TouchableOpacity
                 testID="follow-btn"
@@ -153,7 +172,16 @@ export default function UserProfileScreen() {
           ) : null}
         </View>
 
-        {!canView ? (
+        {profile.is_blocked ? (
+          <View style={styles.privateBox}>
+            <Ionicons name="ban" size={32} color={colors.textMuted} />
+            <Text style={styles.privateTitle}>You blocked this account</Text>
+            <Text style={styles.privateSubtitle}>{"You won't see each other's posts or messages."}</Text>
+            <TouchableOpacity style={styles.unblockBtn} onPress={onUnblock} disabled={busy} testID="unblock-btn">
+              <Text style={styles.unblockBtnText}>Unblock</Text>
+            </TouchableOpacity>
+          </View>
+        ) : !canView ? (
           <View style={styles.privateBox}>
             <Ionicons name="lock-closed" size={32} color={colors.textMuted} />
             <Text style={styles.privateTitle}>This account is private</Text>
@@ -186,6 +214,12 @@ export default function UserProfileScreen() {
         visible={shareOpen}
         onClose={() => setShareOpen(false)}
         payload={sharePayload}
+      />
+      <ModerationSheet
+        visible={modOpen}
+        target={{ kind: "user", userId: profile.user_id, username: profile.username, displayName: profile.display_name }}
+        onClose={() => setModOpen(false)}
+        onBlocked={() => { setModOpen(false); load(); }}
       />
     </SafeAreaView>
   );
@@ -220,5 +254,7 @@ const styles = StyleSheet.create({
   workoutMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   privateBox: { alignItems: "center", padding: spacing.xl, marginTop: spacing.md },
   privateTitle: { color: colors.text, fontWeight: "800", marginTop: 12, fontSize: 15 },
-  privateSubtitle: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
+  privateSubtitle: { color: colors.textMuted, fontSize: 13, marginTop: 4, textAlign: "center", paddingHorizontal: 24 },
+  unblockBtn: { marginTop: 16, paddingHorizontal: 28, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg3 },
+  unblockBtnText: { color: colors.text, fontWeight: "800", fontSize: 14 },
 });

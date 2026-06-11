@@ -294,6 +294,13 @@ export default function SettingsScreen() {
             <Switch testID="toggle-show-status" value={showStatus} onValueChange={setShowStatus} trackColor={{ true: colors.brand, false: colors.border }} />
           </View>
 
+          <TouchableOpacity testID="blocked-accounts-link" style={[styles.linkRow, { marginTop: spacing.md }]} onPress={() => router.push("/blocked")} activeOpacity={0.7}>
+            <Ionicons name="ban-outline" size={20} color={colors.text} />
+            <Text style={styles.linkText}>Blocked accounts</Text>
+            <View style={{ flex: 1 }} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
           <View style={{ marginTop: spacing.xl }}>
             <Button testID="save-settings-btn" title="Save changes" onPress={onSave} loading={saving} />
           </View>

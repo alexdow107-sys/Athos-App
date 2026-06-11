@@ -312,6 +312,9 @@ async def startup():
     await db.follows.create_index([("follower_id", 1), ("following_id", 1)], unique=True)
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.messages.create_index([("conversation_id", 1), ("created_at", 1)])
+    await db.blocks.create_index([("blocker_id", 1), ("blocked_id", 1)], unique=True)
+    await db.blocks.create_index([("blocked_id", 1)])
+    await db.reports.create_index([("status", 1), ("created_at", -1)])
     # Seed exercises
     if await db.exercises.count_documents({"system": True}) == 0:
         docs = []
@@ -594,6 +597,7 @@ async def suggested_users(current=Depends(get_current_user)):
     async for f in db.follows.find({"follower_id": current["user_id"]}):
         already.add(f["following_id"])
     already.add(current["user_id"])
+    already |= await blocked_user_ids(current["user_id"])
     cursor = db.users.find({"user_id": {"$nin": list(already)}}, {"_id": 0}).limit(20)
     users = []
     async for u in cursor:
@@ -613,10 +617,13 @@ async def get_user_profile(username: str, current=Depends(get_current_user_optio
         profile["is_following"] = bool(f and f.get("status") == "accepted")
         profile["follow_pending"] = bool(f and f.get("status") == "pending")
         profile["is_self"] = current["user_id"] == u["user_id"]
+        profile["is_blocked"] = bool(await db.blocks.find_one(
+            {"blocker_id": current["user_id"], "blocked_id": u["user_id"]}))
     else:
         profile["is_following"] = False
         profile["follow_pending"] = False
         profile["is_self"] = False
+        profile["is_blocked"] = False
     return {"user": profile}
 
 
@@ -683,6 +690,97 @@ async def decline_follow_request(follow_id: str, current=Depends(get_current_use
     if not f or f["following_id"] != current["user_id"]:
         raise HTTPException(status_code=404, detail="Not found")
     await db.follows.delete_one({"follow_id": follow_id})
+    return {"ok": True}
+
+
+# ===== BLOCKING & REPORTING (content moderation) =====
+
+async def blocked_user_ids(uid: str) -> set:
+    """User IDs hidden from `uid` in both directions — people they blocked AND
+    people who blocked them. Used to filter feeds, discovery, and messaging."""
+    ids = set()
+    async for b in db.blocks.find(
+        {"$or": [{"blocker_id": uid}, {"blocked_id": uid}]},
+        {"_id": 0, "blocker_id": 1, "blocked_id": 1},
+    ):
+        ids.add(b["blocker_id"])
+        ids.add(b["blocked_id"])
+    ids.discard(uid)
+    return ids
+
+
+async def is_blocked_between(a: str, b: str) -> bool:
+    """True if either user has blocked the other."""
+    return bool(await db.blocks.find_one({"$or": [
+        {"blocker_id": a, "blocked_id": b},
+        {"blocker_id": b, "blocked_id": a},
+    ]}))
+
+
+@api.post("/users/{user_id}/block")
+async def block_user(user_id: str, current=Depends(get_current_user)):
+    if user_id == current["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot block yourself")
+    target = await db.users.find_one({"user_id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    uid = current["user_id"]
+    if not await db.blocks.find_one({"blocker_id": uid, "blocked_id": user_id}):
+        await db.blocks.insert_one({
+            "block_id": gen_id("blk"),
+            "blocker_id": uid,
+            "blocked_id": user_id,
+            "created_at": now_utc(),
+        })
+    # Tear down any follow relationship in both directions, keeping counts correct.
+    for follower, following in ((uid, user_id), (user_id, uid)):
+        f = await db.follows.find_one({"follower_id": follower, "following_id": following})
+        if f:
+            await db.follows.delete_one({"follow_id": f["follow_id"]})
+            if f.get("status") == "accepted":
+                await db.users.update_one({"user_id": following}, {"$inc": {"followers_count": -1}})
+                await db.users.update_one({"user_id": follower}, {"$inc": {"following_count": -1}})
+    return {"ok": True, "blocked": True}
+
+
+@api.delete("/users/{user_id}/block")
+async def unblock_user(user_id: str, current=Depends(get_current_user)):
+    await db.blocks.delete_one({"blocker_id": current["user_id"], "blocked_id": user_id})
+    return {"ok": True, "blocked": False}
+
+
+@api.get("/blocks")
+async def list_blocks(current=Depends(get_current_user)):
+    """Accounts the current user has blocked (for the management screen)."""
+    out = []
+    async for b in db.blocks.find({"blocker_id": current["user_id"]}, {"_id": 0}).sort("created_at", -1):
+        u = await db.users.find_one({"user_id": b["blocked_id"]}, {"_id": 0})
+        if u:
+            out.append(public_user(u))
+    return {"blocked": out}
+
+
+class ReportIn(BaseModel):
+    target_type: str           # "post" | "user" | "comment" | "message"
+    target_id: str
+    reason: str                # short category, e.g. "spam", "harassment"
+    details: Optional[str] = None
+
+
+@api.post("/reports")
+async def create_report(body: ReportIn, current=Depends(get_current_user)):
+    if body.target_type not in ("post", "user", "comment", "message"):
+        raise HTTPException(status_code=400, detail="Invalid report target")
+    await db.reports.insert_one({
+        "report_id": gen_id("rep"),
+        "reporter_id": current["user_id"],
+        "target_type": body.target_type,
+        "target_id": body.target_id,
+        "reason": body.reason,
+        "details": (body.details or "")[:1000],
+        "status": "open",
+        "created_at": now_utc(),
+    })
     return {"ok": True}
 
 
@@ -1190,6 +1288,8 @@ async def get_feed(limit: int = 30, current=Depends(get_current_user)):
     following_ids = [current["user_id"]]
     async for f in db.follows.find({"follower_id": current["user_id"], "status": "accepted"}):
         following_ids.append(f["following_id"])
+    blocked = await blocked_user_ids(current["user_id"])
+    following_ids = [i for i in following_ids if i not in blocked]
     cursor = db.posts.find({"user_id": {"$in": following_ids}}, {"_id": 0}).sort("created_at", -1).limit(limit)
     posts = []
     async for p in cursor:
@@ -1223,6 +1323,7 @@ async def explore_feed(limit: int = 30, current=Depends(get_current_user_optiona
             {"follower_id": uid, "status": "accepted"}, {"following_id": 1}
         ):
             excluded_ids.add(f["following_id"])
+        excluded_ids |= await blocked_user_ids(uid)  # hide blocked accounts both ways
 
         # Engagement affinity — authors of posts you've liked or saved
         engaged_post_ids = set()
@@ -1446,6 +1547,8 @@ async def start_conversation(body: StartConversationIn, current=Depends(get_curr
     other = await db.users.find_one({"user_id": body.user_id})
     if not other:
         raise HTTPException(status_code=404, detail="User not found")
+    if await is_blocked_between(current["user_id"], body.user_id):
+        raise HTTPException(status_code=403, detail="You can't message this user")
     cid = _conv_id(current["user_id"], body.user_id)
     existing = await db.conversations.find_one({"conversation_id": cid})
     if not existing:
@@ -1512,6 +1615,9 @@ async def send_message(conversation_id: str, body: MessageIn, current=Depends(ge
     conv = await db.conversations.find_one({"conversation_id": conversation_id})
     if not conv or current["user_id"] not in conv["participants"]:
         raise HTTPException(status_code=403, detail="Forbidden")
+    other_id = next((p for p in conv["participants"] if p != current["user_id"]), None)
+    if other_id and await is_blocked_between(current["user_id"], other_id):
+        raise HTTPException(status_code=403, detail="You can't message this user")
     mid = gen_id("msg")
     doc = {
         "message_id": mid,
