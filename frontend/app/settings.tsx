@@ -1,15 +1,39 @@
 import React, { useState, useRef } from "react";
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Animated } from "react-native";
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Switch, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, Linking } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import Constants from "expo-constants";
 
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { Avatar } from "@/src/components/Avatar";
 import { Button } from "@/src/components/Button";
 import { colors, radius, spacing } from "@/src/theme";
+
+// TODO: replace with your real support inbox before launch
+const SUPPORT_EMAIL = "support@athos.app";
+
+function SettingRow({ icon, label, onPress, value, danger, first, testID }: {
+  icon: any; label: string; onPress?: () => void; value?: string; danger?: boolean; first?: boolean; testID?: string;
+}) {
+  return (
+    <TouchableOpacity
+      testID={testID}
+      style={[styles.cardRow, !first && styles.cardRowBorder]}
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
+      <Ionicons name={icon} size={19} color={danger ? colors.danger : colors.brand} />
+      <Text style={[styles.cardRowLabel, danger && { color: colors.danger }]}>{label}</Text>
+      {value != null
+        ? <Text style={styles.cardRowValue}>{value}</Text>
+        : onPress ? <Ionicons name="chevron-forward" size={17} color={colors.textMuted} /> : null}
+    </TouchableOpacity>
+  );
+}
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -29,6 +53,14 @@ export default function SettingsScreen() {
   const [showStatus, setShowStatus] = useState(user?.show_workout_status !== false);
   const [saving, setSaving] = useState(false);
   const toastAnim = useRef(new Animated.Value(0)).current;
+  const appVersion = Constants.expoConfig?.version || "1.0.0";
+
+  const openSupport = () => {
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Athos Support")}`).catch(() => {});
+  };
+  const openNotifSettings = () => {
+    Linking.openSettings().catch(() => {});
+  };
 
   const showToast = () => {
     Animated.sequence([
@@ -116,12 +148,6 @@ export default function SettingsScreen() {
     } catch (e: any) {
       Alert.alert("Failed", e.message);
     } finally { setSaving(false); }
-  };
-
-  const confirm = (message: string) => {
-    if (Platform.OS === "web") return window.confirm(message);
-    // On native, we handle via Alert separately
-    return true;
   };
 
   const onLogout = () => {
@@ -294,15 +320,30 @@ export default function SettingsScreen() {
             <Switch testID="toggle-show-status" value={showStatus} onValueChange={setShowStatus} trackColor={{ true: colors.brand, false: colors.border }} />
           </View>
 
-          <TouchableOpacity testID="blocked-accounts-link" style={[styles.linkRow, { marginTop: spacing.md }]} onPress={() => router.push("/blocked")} activeOpacity={0.7}>
-            <Ionicons name="ban-outline" size={20} color={colors.text} />
-            <Text style={styles.linkText}>Blocked accounts</Text>
-            <View style={{ flex: 1 }} />
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+          <Text style={styles.section}>Safety</Text>
+          <View style={styles.card}>
+            <SettingRow first testID="blocked-accounts-link" icon="ban-outline" label="Blocked accounts" onPress={() => router.push("/blocked")} />
+          </View>
 
           <View style={{ marginTop: spacing.xl }}>
             <Button testID="save-settings-btn" title="Save changes" onPress={onSave} loading={saving} />
+          </View>
+
+          {Platform.OS !== "web" && (
+            <>
+              <Text style={styles.section}>Notifications</Text>
+              <View style={styles.card}>
+                <SettingRow first icon="notifications-outline" label="Notification settings" onPress={openNotifSettings} />
+              </View>
+            </>
+          )}
+
+          <Text style={styles.section}>Support & About</Text>
+          <View style={styles.card}>
+            <SettingRow first testID="help-support-row" icon="help-buoy-outline" label="Help & Support" onPress={openSupport} />
+            <SettingRow testID="terms-row" icon="document-text-outline" label="Terms of Service" onPress={() => router.push("/legal/terms" as any)} />
+            <SettingRow testID="privacy-row" icon="lock-closed-outline" label="Privacy Policy" onPress={() => router.push("/legal/privacy" as any)} />
+            <SettingRow icon="information-circle-outline" label="Version" value={appVersion} />
           </View>
 
           <View style={{ marginTop: spacing.xl }}>
@@ -349,6 +390,11 @@ const styles = StyleSheet.create({
   toggleDesc: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   linkRow: { flexDirection: "row", alignItems: "center", padding: spacing.md, backgroundColor: colors.bg2, borderRadius: radius.lg, gap: 10 },
   linkText: { flex: 1, color: colors.text, fontWeight: "700", fontSize: 14 },
+  card: { backgroundColor: colors.bg2, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginTop: spacing.sm },
+  cardRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: 14, gap: 12 },
+  cardRowBorder: { borderTopWidth: 1, borderTopColor: colors.divider },
+  cardRowLabel: { flex: 1, color: colors.text, fontSize: 14, fontWeight: "600" },
+  cardRowValue: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   dangerBtn: {
     flexDirection: "row", alignItems: "center", gap: 12,
     padding: spacing.md, borderRadius: radius.lg,
