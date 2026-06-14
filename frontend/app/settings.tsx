@@ -12,8 +12,7 @@ import { Avatar } from "@/src/components/Avatar";
 import { Button } from "@/src/components/Button";
 import { colors, radius, spacing } from "@/src/theme";
 
-// TODO: replace with your real support inbox before launch
-const SUPPORT_EMAIL = "support@athos.app";
+const SUPPORT_EMAIL = "athosapp1@gmail.com";
 
 function SettingRow({ icon, label, onPress, value, danger, first, testID }: {
   icon: any; label: string; onPress?: () => void; value?: string; danger?: boolean; first?: boolean; testID?: string;
