@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     padding: spacing.md, borderWidth: 1, borderColor: colors.border,
     borderTopWidth: 2, borderTopColor: colors.brand,
   },
-  progressCardWide: { minWidth: "100%", flex: 2 },
+  progressCardWide: { flexBasis: "100%" },
   progressIconWrap: {
     width: 26, height: 26, borderRadius: radius.sm,
     backgroundColor: colors.brandLight, alignItems: "center", justifyContent: "center",
