@@ -1,14 +1,16 @@
 {
     "expo": {
-        "name": "frontend",
-        "slug": "frontend",
+        "name": "Athos",
+        "slug": "athos",
         "version": "1.0.0",
         "orientation": "portrait",
         "icon": "./assets/images/icon.png",
-        "scheme": "frontend",
-        "userInterfaceStyle": "automatic",
+        "scheme": "athos",
+        "userInterfaceStyle": "dark",
         "newArchEnabled": true,
         "ios": {
+            "bundleIdentifier": "com.alexdow.athos",
+            "buildNumber": "1",
             "supportsTablet": true,
             "infoPlist": {
                 "NSUserNotificationsUsageDescription": "Athos shows a lock screen notification so you can see your workout timer and rest countdown without unlocking your phone."
