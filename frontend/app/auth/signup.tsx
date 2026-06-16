@@ -4,6 +4,7 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "@/src/context/AuthContext";
 import { Button } from "@/src/components/Button";
@@ -17,6 +18,7 @@ export default function SignupScreen() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async () => {
@@ -27,6 +29,10 @@ export default function SignupScreen() {
     }
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
       setError("Password must be at least 8 characters and contain letters + a number");
+      return;
+    }
+    if (!agreed) {
+      setError("Please agree to the Terms of Service and Privacy Policy");
       return;
     }
     setLoading(true);
@@ -98,6 +104,16 @@ export default function SignupScreen() {
 
           {error ? <Text style={styles.error} testID="signup-error">{error}</Text> : null}
 
+          <TouchableOpacity style={styles.agreeRow} onPress={() => setAgreed((a) => !a)} activeOpacity={0.7} testID="agree-terms">
+            <Ionicons name={agreed ? "checkbox" : "square-outline"} size={20} color={agreed ? colors.brand : colors.textMuted} />
+            <Text style={styles.agreeText}>
+              I agree to Athos&apos;s{" "}
+              <Text style={styles.agreeLink} onPress={() => router.push("/legal/terms" as any)}>Terms of Service</Text>
+              {" "}and{" "}
+              <Text style={styles.agreeLink} onPress={() => router.push("/legal/privacy" as any)}>Privacy Policy</Text>.
+            </Text>
+          </TouchableOpacity>
+
           <View style={{ marginTop: spacing.lg }}>
             <Button testID="signup-submit-button" title="Create account" onPress={onSubmit} loading={loading} />
           </View>
@@ -128,6 +144,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   error: { color: colors.danger, marginTop: spacing.md, fontSize: 13, fontWeight: "600" },
+  agreeRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: spacing.lg },
+  agreeText: { flex: 1, color: colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  agreeLink: { color: colors.brand, fontWeight: "700" },
   row: { flexDirection: "row", justifyContent: "center", marginTop: spacing.xl },
   muted: { color: colors.textMuted },
   linkText: { color: colors.brand, fontWeight: "700" },

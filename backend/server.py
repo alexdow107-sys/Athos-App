@@ -236,13 +236,18 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     user = await _resolve_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if user.get("is_banned"):
+        raise HTTPException(status_code=403, detail="This account has been suspended.")
     return user
 
 
 async def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Optional[dict]:
     if not authorization or not authorization.startswith("Bearer "):
         return None
-    return await _resolve_user(authorization[7:])
+    u = await _resolve_user(authorization[7:])
+    if u and u.get("is_banned"):
+        return None  # banned users are treated as logged-out
+    return u
 
 
 def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
@@ -379,6 +384,8 @@ async def login(body: LoginIn):
     u = await db.users.find_one({"email": body.email.lower()})
     if not u or not u.get("password_hash") or not pwd_ctx.verify(body.password, u["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if u.get("is_banned"):
+        raise HTTPException(status_code=403, detail="This account has been suspended.")
     token = create_token(u["user_id"])
     return {"token": token, "user": public_user(clean(u))}
 
@@ -490,7 +497,7 @@ async def suggested_users(current=Depends(get_current_user)):
 @api.get("/users/{username}")
 async def get_user_profile(username: str, current=Depends(get_current_user_optional)):
     u = await db.users.find_one({"username": username.lower()}, {"_id": 0})
-    if not u:
+    if not u or u.get("is_banned"):
         raise HTTPException(status_code=404, detail="User not found")
     profile = public_user(u)
     # Check follow status
@@ -1176,6 +1183,8 @@ async def get_feed(limit: int = 30, current=Depends(get_current_user)):
     posts = []
     async for p in cursor:
         u = await db.users.find_one({"user_id": p["user_id"]}, {"_id": 0})
+        if u and u.get("is_banned"):
+            continue  # hide suspended accounts' posts
         liked = await db.likes.find_one({"post_id": p["post_id"], "user_id": current["user_id"]})
         saved = await db.saves.find_one({"post_id": p["post_id"], "user_id": current["user_id"]})
         posts.append({**p, "user": public_user(u) if u else None, "liked": bool(liked), "saved": bool(saved)})
@@ -1242,7 +1251,7 @@ async def explore_feed(limit: int = 30, current=Depends(get_current_user_optiona
     scored = []
     for p in candidates:
         u = await db.users.find_one({"user_id": p["user_id"]}, {"_id": 0})
-        if not u or u.get("is_private"):
+        if not u or u.get("is_private") or u.get("is_banned"):
             continue
         score = 0.0
         # Engagement affinity with this creator
