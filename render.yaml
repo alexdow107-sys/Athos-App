@@ -1,0 +1,24 @@
+# Render Blueprint — deploys the Athos FastAPI backend on the free tier.
+# Secrets (MONGO_URL, JWT_SECRET_KEY) are marked `sync: false`, so you paste them
+# into the Render dashboard instead of committing them to the repo.
+services:
+  - type: web
+    name: athos-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false          # set in dashboard — your production Atlas connection string
+      - key: JWT_SECRET_KEY
+        sync: false          # set in dashboard — the strong secret already in your .env
+      - key: DB_NAME
+        value: athos
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_ACCESS_TOKEN_EXPIRE_DAYS
+        value: "30"
+      - key: PYTHON_VERSION
+        value: "3.12.7"
