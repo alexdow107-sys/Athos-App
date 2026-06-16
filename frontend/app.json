@@ -9,7 +9,7 @@
         "userInterfaceStyle": "dark",
         "newArchEnabled": true,
         "ios": {
-            "bundleIdentifier": "com.alexdow.athos",
+            "bundleIdentifier": "com.athosapp.athos",
             "buildNumber": "1",
             "supportsTablet": true,
             "infoPlist": {
