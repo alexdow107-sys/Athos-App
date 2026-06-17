@@ -17,9 +17,9 @@ export default function ActiveWorkoutScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const {
-    active, elapsed, restRemaining, restDuration,
+    active, elapsed, restRemaining, restDuration, restRunning,
     addSet, removeSet, updateSet, completeSet,
-    removeExercise, updateExercise, startRestTimer, stopRestTimer,
+    removeExercise, updateExercise, setRestDuration, startRest, pauseRest, resetRest,
     cancelWorkout, setActive,
   } = useWorkout();
 
@@ -136,19 +136,29 @@ export default function ActiveWorkoutScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Rest timer */}
-        {restRemaining > 0 && (
-          <View style={styles.restBar} testID="rest-timer-bar">
-            <Ionicons name="timer-outline" size={18} color="#fff" />
-            <Text style={styles.restText}>Rest: {restRemaining}s</Text>
-            <View style={styles.restProgress}>
-              <View style={[styles.restProgressFill, { width: `${(restRemaining / restDuration) * 100}%` }]} />
-            </View>
-            <TouchableOpacity testID="skip-rest-btn" onPress={stopRestTimer} style={styles.restSkip}>
-              <Text style={styles.restSkipText}>Skip</Text>
-            </TouchableOpacity>
+        {/* Manual rest timer — sits at the top; start / pause / reset yourself */}
+        <View style={[styles.restBar, restRunning && styles.restBarRunning]} testID="rest-timer-bar">
+          <Ionicons name="timer-outline" size={18} color={restRunning ? "#fff" : colors.brand} />
+          <Text style={[styles.restTime, restRunning && { color: "#fff" }]}>{fmtDuration(restRemaining)}</Text>
+          <View style={styles.restPresets}>
+            {[60, 90, 120, 180].map((s) => (
+              <TouchableOpacity
+                key={s}
+                testID={`rest-preset-${s}`}
+                onPress={() => setRestDuration(s)}
+                style={[styles.restPreset, restDuration === s && styles.restPresetActive]}
+              >
+                <Text style={[styles.restPresetText, restDuration === s && styles.restPresetTextActive]}>{s}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        )}
+          <TouchableOpacity testID="rest-toggle-btn" onPress={restRunning ? pauseRest : startRest} style={styles.restPlay}>
+            <Ionicons name={restRunning ? "pause" : "play"} size={18} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity testID="rest-reset-btn" onPress={resetRest} style={styles.restReset}>
+            <Ionicons name="refresh" size={16} color={restRunning ? "#fff" : colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
 
         {/* Workout name + page navigation */}
         <View style={styles.pagerTop}>
@@ -229,8 +239,6 @@ export default function ActiveWorkoutScreen() {
                   onCompleteSet={(si) => completeSet(index, si)}
                   onToggleUnilateral={(val) => updateExercise(index, { is_unilateral: val })}
                   onChangeMachine={() => setMachineFor(index)}
-                  onChangeRest={(seconds) => updateExercise(index, { rest_seconds: seconds })}
-                  onStartRest={() => startRestTimer(item.rest_seconds || 90)}
                   onNotes={(notes) => updateExercise(index, { notes })}
                 />
                 <TouchableOpacity style={styles.nextBtn} onPress={() => goTo(index + 1)} activeOpacity={0.7}>
@@ -284,14 +292,12 @@ interface ExCardProps {
   onCompleteSet: (si: number) => void;
   onToggleUnilateral: (v: boolean) => void;
   onChangeMachine: () => void;
-  onChangeRest: (s: number) => void;
-  onStartRest: () => void;
   onNotes: (n: string) => void;
 }
 
 const ExerciseCard: React.FC<ExCardProps> = ({
   index, ex, weightUnit, onRemove, onAddSet, onRemoveSet, onUpdateSet, onCompleteSet,
-  onToggleUnilateral, onChangeMachine, onChangeRest, onStartRest, onNotes,
+  onToggleUnilateral, onChangeMachine, onNotes,
 }) => {
   const [history, setHistory] = useState<any>(null);
 
@@ -303,8 +309,6 @@ const ExerciseCard: React.FC<ExCardProps> = ({
       } catch {}
     })();
   }, [ex.exercise_id]);
-
-  const restOptions = [60, 90, 120, 180];
 
   return (
     <View style={styles.exCard} testID={`exercise-card-${index}`}>
@@ -345,19 +349,6 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             {ex.machine || "Machine"}
           </Text>
         </TouchableOpacity>
-        <View style={styles.restPicker}>
-          <Ionicons name="timer-outline" size={13} color={colors.textSecondary} />
-          {restOptions.map((r) => (
-            <TouchableOpacity
-              key={r}
-              testID={`rest-${r}-${index}`}
-              onPress={() => onChangeRest(r)}
-              style={[styles.restMini, ex.rest_seconds === r && styles.restMiniActive]}
-            >
-              <Text style={[styles.restMiniText, ex.rest_seconds === r && { color: "#fff" }]}>{r}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </View>
 
       <TextInput
@@ -480,12 +471,16 @@ const styles = StyleSheet.create({
   timerLabel: { color: colors.textMuted, fontSize: 11, marginTop: 2, fontWeight: "700" },
   finishBtn: { backgroundColor: colors.brand, paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.md },
   finishText: { color: "#fff", fontWeight: "800", fontSize: 14 },
-  restBar: { flexDirection: "row", alignItems: "center", backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 10 },
-  restText: { color: "#fff", fontWeight: "800", marginLeft: 8, marginRight: 12, fontSize: 13 },
-  restProgress: { flex: 1, height: 4, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: 2 },
-  restProgressFill: { height: 4, backgroundColor: "#fff", borderRadius: 2 },
-  restSkip: { paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.2)" },
-  restSkipText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  restBar: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.bg2, paddingHorizontal: spacing.md, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  restBarRunning: { backgroundColor: colors.brand, borderBottomColor: colors.brand },
+  restTime: { color: colors.text, fontWeight: "900", fontSize: 18, fontVariant: ["tabular-nums"], minWidth: 56 },
+  restPresets: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1, justifyContent: "center" },
+  restPreset: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: radius.sm, backgroundColor: colors.bg3 },
+  restPresetActive: { backgroundColor: colors.text },
+  restPresetText: { color: colors.textSecondary, fontSize: 12, fontWeight: "800" },
+  restPresetTextActive: { color: colors.bg },
+  restPlay: { width: 36, height: 32, borderRadius: radius.md, backgroundColor: colors.success, alignItems: "center", justifyContent: "center" },
+  restReset: { width: 34, height: 32, borderRadius: radius.md, backgroundColor: colors.bg3, alignItems: "center", justifyContent: "center" },
   scroll: { padding: spacing.md, paddingBottom: 60 },
   pagerTop: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   pagerNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm },
@@ -518,10 +513,6 @@ const styles = StyleSheet.create({
   quickChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.full, backgroundColor: colors.bg3, gap: 4, maxWidth: 160 },
   quickChipActive: { backgroundColor: colors.brand },
   quickChipText: { color: colors.textSecondary, fontSize: 11, fontWeight: "800" },
-  restPicker: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 5, borderRadius: radius.full, backgroundColor: colors.bg3, gap: 4 },
-  restMini: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.sm },
-  restMiniActive: { backgroundColor: colors.brand },
-  restMiniText: { color: colors.textSecondary, fontSize: 11, fontWeight: "800" },
   removeExBtn: { flexDirection: "row", alignItems: "center", marginTop: 12, paddingVertical: 6 },
   removeExText: { color: colors.danger, fontSize: 13, fontWeight: "700", marginLeft: 6 },
   setHeaderRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.divider },

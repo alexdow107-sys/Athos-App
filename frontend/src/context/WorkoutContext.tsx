@@ -47,8 +47,10 @@ const ACTIVE_KEY = "atho_active_workout";
 const REST_KEY = "atho_rest_timer";
 
 interface RestTimer {
-  end_at: number;
-  duration: number;
+  duration: number;          // chosen rest length (seconds)
+  remaining: number;         // seconds left (authoritative when paused)
+  running: boolean;
+  end_at: number | null;     // wall-clock target while running
 }
 
 interface WorkoutCtx {
@@ -56,6 +58,7 @@ interface WorkoutCtx {
   elapsed: number;
   restRemaining: number;
   restDuration: number;
+  restRunning: boolean;
   startWorkout: (name?: string) => Promise<ActiveWorkout>;
   finishWorkout: (extras?: { caption?: string; photos?: string[]; visibility?: "public" | "private"; name?: string }) => Promise<any>;
   cancelWorkout: () => Promise<void>;
@@ -66,8 +69,10 @@ interface WorkoutCtx {
   removeSet: (exIndex: number, setIndex: number) => void;
   updateSet: (exIndex: number, setIndex: number, updates: Partial<SetData>) => void;
   completeSet: (exIndex: number, setIndex: number) => void;
-  startRestTimer: (seconds: number) => void;
-  stopRestTimer: () => void;
+  setRestDuration: (seconds: number) => void;
+  startRest: () => void;
+  pauseRest: () => void;
+  resetRest: () => void;
   setActive: (a: ActiveWorkout | null) => void;
   refresh: () => Promise<void>;
 }
@@ -77,8 +82,8 @@ const Ctx = createContext<WorkoutCtx | null>(null);
 export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [active, setActiveState] = useState<ActiveWorkout | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [rest, setRest] = useState<RestTimer | null>(null);
-  const [restRemaining, setRestRemaining] = useState(0);
+  const [rest, setRest] = useState<RestTimer>({ duration: 90, remaining: 90, running: false, end_at: null });
+  const [restRemaining, setRestRemaining] = useState(90);
   const tickRef = useRef<any>(null);
   const notifTickRef = useRef<any>(null);  // updates lock-screen notification ~every 60 s
   const lastNotifElapsed = useRef<number>(-1);
@@ -137,10 +142,12 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const r = (await storage.getItem(REST_KEY, "")) as string;
         if (r) {
           const parsed: RestTimer = JSON.parse(r);
-          if (parsed.end_at > Date.now()) {
+          if (parsed.running && parsed.end_at && parsed.end_at > Date.now()) {
+            // still counting down
             setRest(parsed);
           } else {
-            storage.removeItem(REST_KEY);
+            // expired or paused while closed — restore stopped, ready to start
+            setRest({ duration: parsed.duration || 90, remaining: parsed.remaining || parsed.duration || 90, running: false, end_at: null });
           }
         }
       } catch {}
@@ -155,20 +162,20 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const startedMs = new Date(active.started_at).getTime();
         setElapsed(Math.floor((Date.now() - startedMs) / 1000));
       }
-      if (rest) {
-        const remain = Math.max(0, Math.floor((rest.end_at - Date.now()) / 1000));
+      if (rest.running && rest.end_at) {
+        const remain = Math.max(0, Math.round((rest.end_at - Date.now()) / 1000));
         setRestRemaining(remain);
         if (remain === 0) {
-          setRest(null);
+          // Rest finished — stop and reset to the chosen duration, ready for the next set
+          setRest((r) => ({ ...r, running: false, end_at: null, remaining: r.duration }));
           storage.removeItem(REST_KEY);
-          // Rest finished — switch notification back to plain workout display
           if (active) {
             const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
             showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
           }
         }
       } else {
-        setRestRemaining(0);
+        setRestRemaining(rest.remaining);
       }
     }, 1000);
     return () => clearInterval(tickRef.current);
@@ -182,7 +189,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return;
     }
     notifTickRef.current = setInterval(() => {
-      if (!active?.started_at || rest) return; // rest notification is handled separately
+      if (!active?.started_at || rest.running) return; // rest notification is handled separately
       const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
       // Only update if elapsed changed by at least 60 s (avoids hammering the API)
       if (el - lastNotifElapsed.current >= 60) {
@@ -228,7 +235,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }),
     });
     setActive(null);
-    stopRestTimer();
+    resetRest();
     clearWorkoutNotifications();
     return r;
   };
@@ -240,7 +247,8 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveState(null);
     activeRef.current = null;
     storage.removeItem(ACTIVE_KEY);
-    setRest(null);
+    setRest({ duration: 90, remaining: 90, running: false, end_at: null });
+    setRestRemaining(90);
     storage.removeItem(REST_KEY);
     clearWorkoutNotifications().catch(() => {});
     cancelRestEndNotification().catch(() => {});
@@ -338,30 +346,58 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const set = ex.sets[si];
     const newCompleted = !set?.completed;
     updateSet(i, si, { completed: newCompleted });
-    if (newCompleted) {
-      hapticLight();
-      startRestTimer(ex.rest_seconds || 90);
-    }
+    if (newCompleted) hapticLight();
   };
 
-  const startRestTimer = (seconds: number) => {
-    const endAt = Date.now() + seconds * 1000;
-    const r: RestTimer = { end_at: endAt, duration: seconds };
-    setRest(r);
-    storage.setItem(REST_KEY, JSON.stringify(r) as any);
-    // Update notification to show rest countdown + schedule the "rest over" alert
+  // ---- Manual rest timer (top of the logging screen) ----
+  const persistRest = (r: RestTimer) => storage.setItem(REST_KEY, JSON.stringify(r) as any);
+
+  const setRestDuration = (seconds: number) => {
+    const next: RestTimer = { duration: seconds, remaining: seconds, running: false, end_at: null };
+    setRest(next);
+    setRestRemaining(seconds);
+    persistRest(next);
+    cancelRestEndNotification();
+  };
+
+  const startRest = () => {
+    setRest((r) => {
+      const rem = r.remaining > 0 ? r.remaining : r.duration;
+      const endAt = Date.now() + rem * 1000;
+      const next: RestTimer = { ...r, remaining: rem, running: true, end_at: endAt };
+      persistRest(next);
+      if (active) {
+        const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
+        showRestNotification({ workoutName: active.name, elapsedSeconds: el, restRemaining: rem });
+        scheduleRestEndNotification({ workoutName: active.name, restEndMs: endAt });
+      }
+      return next;
+    });
+  };
+
+  const pauseRest = () => {
+    setRest((r) => {
+      if (!r.running) return r;
+      const rem = r.end_at ? Math.max(0, Math.round((r.end_at - Date.now()) / 1000)) : r.remaining;
+      const next: RestTimer = { ...r, running: false, end_at: null, remaining: rem };
+      persistRest(next);
+      return next;
+    });
+    cancelRestEndNotification();
     if (active) {
       const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
-      showRestNotification({ workoutName: active.name, elapsedSeconds: el, restRemaining: seconds });
-      scheduleRestEndNotification({ workoutName: active.name, restEndMs: endAt });
+      showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
     }
   };
 
-  const stopRestTimer = () => {
-    setRest(null);
-    storage.removeItem(REST_KEY);
+  const resetRest = () => {
+    setRest((r) => {
+      const next: RestTimer = { ...r, running: false, end_at: null, remaining: r.duration };
+      setRestRemaining(r.duration);
+      persistRest(next);
+      return next;
+    });
     cancelRestEndNotification();
-    // Switch notification back to plain workout display
     if (active) {
       const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
       showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
@@ -385,8 +421,11 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         removeSet,
         updateSet,
         completeSet,
-        startRestTimer,
-        stopRestTimer,
+        restRunning: rest.running,
+        setRestDuration,
+        startRest,
+        pauseRest,
+        resetRest,
         setActive,
         refresh,
       }}
