@@ -181,7 +181,10 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearInterval(tickRef.current);
   }, [active, rest]);
 
-  // Update lock-screen notification roughly every 60 s while workout is active
+  // Keep the lock-screen notification feeling "live": refresh the rest countdown
+  // every few seconds while resting, and the elapsed workout time more frequently
+  // than before. (A true second-by-second ticker needs iOS Live Activities — a
+  // future native build; this is the lightweight in-between.)
   useEffect(() => {
     if (notifTickRef.current) clearInterval(notifTickRef.current);
     if (!active) {
@@ -189,14 +192,20 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return;
     }
     notifTickRef.current = setInterval(() => {
-      if (!active?.started_at || rest.running) return; // rest notification is handled separately
+      if (!active?.started_at) return;
       const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
-      // Only update if elapsed changed by at least 60 s (avoids hammering the API)
-      if (el - lastNotifElapsed.current >= 60) {
+      if (rest.running && rest.end_at) {
+        // Live-ish rest countdown on the lock screen.
+        const remain = Math.max(0, Math.round((rest.end_at - Date.now()) / 1000));
+        showRestNotification({ workoutName: active.name, elapsedSeconds: el, restRemaining: remain });
+        return;
+      }
+      // Refresh elapsed time about every 15 s (was 60 s).
+      if (el - lastNotifElapsed.current >= 15) {
         lastNotifElapsed.current = el;
         showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
       }
-    }, 15000); // check every 15 s, only sends a new notification every ~60 s
+    }, 5000); // tick every 5 s
     return () => clearInterval(notifTickRef.current);
   }, [active, rest]);
 

@@ -8,10 +8,11 @@
  *  - When the workout ends or is discarded: cancels everything.
  *
  * Limitations (managed Expo, no native extensions):
- *  - The elapsed-time display in the notification body updates roughly every 60 s
- *    (when the app re-triggers it). It won't tick second-by-second on the lock screen;
- *    that requires iOS Live Activities or an Android foreground service — both need
- *    a custom native build.
+ *  - The display refreshes about every 15 s for elapsed time and every ~5 s while
+ *    resting, but only while the app is in the foreground (JS timers are suspended
+ *    in the background). It won't tick second-by-second on a locked screen — that
+ *    requires iOS Live Activities or an Android foreground service, both of which
+ *    need a custom native build (planned as a follow-up).
  *  - The rest "Rest over" notification fires at exactly the right time because it is
  *    scheduled as a future local notification, which the OS delivers even when the app
  *    is in the background.
