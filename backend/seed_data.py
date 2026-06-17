@@ -185,6 +185,66 @@ SEED_EXERCISES = [
     {"name": "Battle Ropes", "category": "cardio", "muscle_group": "cardio", "is_unilateral": False},
     {"name": "Sled Push", "category": "cardio", "muscle_group": "cardio", "is_unilateral": False},
     {"name": "Sled Pull", "category": "cardio", "muscle_group": "cardio", "is_unilateral": False},
+
+    # ===== ADDITIONAL: CHEST =====
+    {"name": "Incline Smith Machine Bench Press", "category": "machine", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Decline Smith Machine Bench Press", "category": "machine", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Pec Fly Machine", "category": "machine", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Seated Cable Pec Fly", "category": "cable", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Standing Cable Pec Fly", "category": "cable", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Cable Incline Press", "category": "cable", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Landmine Press", "category": "barbell", "muscle_group": "chest", "is_unilateral": True},
+    {"name": "Svend Press", "category": "dumbbell", "muscle_group": "chest", "is_unilateral": False},
+    {"name": "Machine Incline Press", "category": "machine", "muscle_group": "chest", "is_unilateral": False},
+
+    # ===== ADDITIONAL: BACK =====
+    {"name": "Trap Bar Deadlift", "category": "barbell", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Rack Pull", "category": "barbell", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Meadows Row", "category": "barbell", "muscle_group": "back", "is_unilateral": True},
+    {"name": "Seal Row", "category": "barbell", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Chest-Supported Machine Row", "category": "machine", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Hammer Strength Row", "category": "machine", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Wide-Grip Lat Pulldown", "category": "cable", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Close-Grip Lat Pulldown", "category": "cable", "muscle_group": "back", "is_unilateral": False},
+    {"name": "Neutral-Grip Lat Pulldown", "category": "cable", "muscle_group": "back", "is_unilateral": False},
+
+    # ===== ADDITIONAL: SHOULDERS =====
+    {"name": "Z-Press", "category": "barbell", "muscle_group": "shoulders", "is_unilateral": False},
+    {"name": "Seated Dumbbell Press", "category": "dumbbell", "muscle_group": "shoulders", "is_unilateral": False},
+    {"name": "Cable Y-Raise", "category": "cable", "muscle_group": "shoulders", "is_unilateral": False},
+    {"name": "Machine Reverse Fly", "category": "machine", "muscle_group": "shoulders", "is_unilateral": False},
+    {"name": "Landmine Lateral Raise", "category": "barbell", "muscle_group": "shoulders", "is_unilateral": True},
+
+    # ===== ADDITIONAL: ARMS =====
+    {"name": "Overhead Dumbbell Tricep Extension", "category": "dumbbell", "muscle_group": "triceps", "is_unilateral": False},
+    {"name": "Single-Arm Overhead Tricep Extension", "category": "dumbbell", "muscle_group": "triceps", "is_unilateral": True},
+    {"name": "Rope Overhead Tricep Extension", "category": "cable", "muscle_group": "triceps", "is_unilateral": False},
+    {"name": "JM Press", "category": "barbell", "muscle_group": "triceps", "is_unilateral": False},
+    {"name": "Spider Curl", "category": "dumbbell", "muscle_group": "biceps", "is_unilateral": False},
+    {"name": "Reverse Curl", "category": "barbell", "muscle_group": "biceps", "is_unilateral": False},
+    {"name": "Zottman Curl", "category": "dumbbell", "muscle_group": "biceps", "is_unilateral": False},
+    {"name": "Drag Curl", "category": "barbell", "muscle_group": "biceps", "is_unilateral": False},
+    {"name": "Wrist Curl", "category": "dumbbell", "muscle_group": "forearms", "is_unilateral": False},
+    {"name": "Reverse Wrist Curl", "category": "dumbbell", "muscle_group": "forearms", "is_unilateral": False},
+
+    # ===== ADDITIONAL: LEGS =====
+    {"name": "Reverse Hack Squat", "category": "machine", "muscle_group": "legs", "is_unilateral": False},
+    {"name": "Belt Squat", "category": "machine", "muscle_group": "legs", "is_unilateral": False},
+    {"name": "Sissy Squat", "category": "bodyweight", "muscle_group": "quads", "is_unilateral": False},
+    {"name": "Nordic Hamstring Curl", "category": "bodyweight", "muscle_group": "hamstrings", "is_unilateral": False},
+    {"name": "Glute Ham Raise", "category": "bodyweight", "muscle_group": "hamstrings", "is_unilateral": False},
+    {"name": "Hip Thrust Machine", "category": "machine", "muscle_group": "glutes", "is_unilateral": False},
+    {"name": "Single-Leg Leg Press", "category": "machine", "muscle_group": "legs", "is_unilateral": True},
+    {"name": "Smith Machine Lunge", "category": "machine", "muscle_group": "legs", "is_unilateral": True},
+    {"name": "Smith Machine Calf Raise", "category": "machine", "muscle_group": "calves", "is_unilateral": False},
+
+    # ===== ADDITIONAL: CORE =====
+    {"name": "Ab Wheel Rollout", "category": "bodyweight", "muscle_group": "core", "is_unilateral": False},
+    {"name": "Hanging Knee Raise", "category": "bodyweight", "muscle_group": "core", "is_unilateral": False},
+    {"name": "Decline Sit-Up", "category": "bodyweight", "muscle_group": "core", "is_unilateral": False},
+    {"name": "Pallof Press", "category": "cable", "muscle_group": "core", "is_unilateral": True},
+    {"name": "Dead Bug", "category": "bodyweight", "muscle_group": "core", "is_unilateral": False},
+    {"name": "Toes-to-Bar", "category": "bodyweight", "muscle_group": "core", "is_unilateral": False},
 ]
 
 # Default machine variants per machine exercise (for "Machine Selection" feature)

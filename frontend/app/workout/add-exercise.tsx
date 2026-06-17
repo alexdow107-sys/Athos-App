@@ -8,21 +8,10 @@ import { api } from "@/src/api/client";
 import { useWorkout } from "@/src/context/WorkoutContext";
 import { colors, radius, spacing } from "@/src/theme";
 
-const CATEGORIES = [
-  { key: "", label: "All" },
-  { key: "barbell", label: "Barbell" },
-  { key: "dumbbell", label: "Dumbbell" },
-  { key: "machine", label: "Machine" },
-  { key: "cable", label: "Cable" },
-  { key: "bodyweight", label: "Bodyweight" },
-  { key: "cardio", label: "Cardio" },
-];
-
 export default function AddExerciseScreen() {
   const router = useRouter();
   const { addExercise } = useWorkout();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("");
   const [exercises, setExercises] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -33,7 +22,6 @@ export default function AddExerciseScreen() {
       setLoading(true);
       try {
         const params = new URLSearchParams();
-        if (category) params.set("category", category);
         if (query.trim()) params.set("q", query.trim());
         const r = await api<any>(`/exercises?${params.toString()}`);
         setExercises(r.exercises);
@@ -41,7 +29,7 @@ export default function AddExerciseScreen() {
         setLoading(false);
       }
     })();
-  }, [query, category]);
+  }, [query]);
 
   const onPick = (ex: any) => {
     addExercise({
@@ -59,7 +47,7 @@ export default function AddExerciseScreen() {
         method: "POST",
         body: JSON.stringify({
           name: newName.trim(),
-          category: category || "barbell",
+          category: "barbell",
           muscle_group: "other",
           is_unilateral: false,
         }),
@@ -105,23 +93,6 @@ export default function AddExerciseScreen() {
         ) : null}
       </View>
 
-      <FlatList
-        horizontal
-        data={CATEGORIES}
-        keyExtractor={(c) => c.key || "all"}
-        contentContainerStyle={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}
-        showsHorizontalScrollIndicator={false}
-        renderItem={({ item: c }) => (
-          <TouchableOpacity
-            testID={`category-${c.key || "all"}`}
-            onPress={() => setCategory(c.key)}
-            style={[styles.catChip, category === c.key && styles.catChipActive]}
-          >
-            <Text style={[styles.catText, category === c.key && styles.catTextActive]}>{c.label}</Text>
-          </TouchableOpacity>
-        )}
-      />
-
       {creating ? (
         <View style={styles.createBox}>
           <Text style={styles.createLabel}>Custom exercise name</Text>
@@ -163,7 +134,7 @@ export default function AddExerciseScreen() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.exName}>{item.name}</Text>
-                <Text style={styles.exMeta}>{item.category} · {item.muscle_group}{!item.system ? " · Custom" : ""}</Text>
+                {!item.system ? <Text style={styles.exMeta}>Custom</Text> : null}
               </View>
               <Ionicons name="add" size={22} color={colors.brand} />
             </TouchableOpacity>
@@ -186,10 +157,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: "800", color: colors.text },
   searchWrap: { flexDirection: "row", alignItems: "center", margin: spacing.md, marginTop: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.bg2, borderRadius: radius.lg },
   input: { flex: 1, paddingHorizontal: 10, paddingVertical: 11, fontSize: 15, color: colors.text },
-  catChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bg2, marginRight: 8 },
-  catChipActive: { backgroundColor: colors.brand },
-  catText: { color: colors.textSecondary, fontSize: 13, fontWeight: "700" },
-  catTextActive: { color: "#fff" },
   customRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: 12, gap: 10, backgroundColor: colors.brandLight + "60" },
   customText: { color: colors.brand, fontWeight: "800", fontSize: 14 },
   createBox: { padding: spacing.md, backgroundColor: colors.brandLight + "60" },

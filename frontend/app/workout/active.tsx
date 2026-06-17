@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform,
+  FlatList, useWindowDimensions, NativeSyntheticEvent, NativeScrollEvent,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -39,6 +40,30 @@ export default function ActiveWorkoutScreen() {
       } catch {}
     })();
   }, []);
+
+  // ----- Horizontal exercise pager (swipe between exercises) -----
+  const { width } = useWindowDimensions();
+  const listRef = useRef<FlatList<any>>(null);
+  const [page, setPage] = useState(0);
+  const exCount = active?.exercises.length ?? 0;
+  const prevCount = useRef(exCount);
+
+  const goTo = (i: number) => listRef.current?.scrollToOffset({ offset: i * width, animated: true });
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (width > 0) setPage(Math.round(e.nativeEvent.contentOffset.x / width));
+  };
+
+  useEffect(() => {
+    if (exCount > prevCount.current) {
+      // a new exercise was just added -> slide over to it
+      const t = setTimeout(() => goTo(exCount - 1), 60);
+      prevCount.current = exCount;
+      return () => clearTimeout(t);
+    }
+    if (page > exCount) goTo(exCount); // clamp after a removal
+    prevCount.current = exCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exCount]);
 
   if (!active) {
     return (
@@ -125,7 +150,8 @@ export default function ActiveWorkoutScreen() {
           </View>
         )}
 
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {/* Workout name + page navigation */}
+        <View style={styles.pagerTop}>
           <TextInput
             testID="workout-name-input"
             value={name}
@@ -135,47 +161,86 @@ export default function ActiveWorkoutScreen() {
             placeholderTextColor={colors.textMuted}
             style={styles.nameInput}
           />
-
-          {active.exercises.length === 0 && (
-            <View style={styles.emptyExercise}>
-              <Ionicons name="barbell-outline" size={48} color={colors.textMuted} />
-              <Text style={styles.emptyExerciseText}>Add your first exercise</Text>
+          {exCount > 0 && (
+            <View style={styles.pagerNav}>
+              <Text style={styles.pageCounter}>
+                {page < exCount ? `Exercise ${page + 1} of ${exCount}` : "Add exercise"}
+                <Text style={styles.swipeHint}>   swipe ‹ ›</Text>
+              </Text>
+              <View style={styles.dotsRow}>
+                {active.exercises.map((_, i) => (
+                  <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                    <View style={[styles.dot, page === i && styles.dotActive]} />
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity onPress={() => goTo(exCount)} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                  <View style={[styles.dotAdd, page === exCount && styles.dotAddActive]}>
+                    <Ionicons name="add" size={11} color={page === exCount ? "#fff" : colors.textMuted} />
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
+        </View>
 
-          {active.exercises.map((ex, idx) => (
-            <ExerciseCard
-              key={`${ex.exercise_id}-${idx}`}
-              index={idx}
-              ex={ex}
-              weightUnit={user?.weight_unit || "kg"}
-              onRemove={() => removeExercise(idx)}
-              onAddSet={() => addSet(idx)}
-              onRemoveSet={(si) => removeSet(idx, si)}
-              onUpdateSet={(si, u) => updateSet(idx, si, u)}
-              onCompleteSet={(si) => completeSet(idx, si)}
-              onToggleUnilateral={(val) => updateExercise(idx, { is_unilateral: val })}
-              onChangeMachine={() => setMachineFor(idx)}
-              onChangeRest={(seconds) => updateExercise(idx, { rest_seconds: seconds })}
-              onStartRest={() => startRestTimer(ex.rest_seconds || 90)}
-              onNotes={(notes) => updateExercise(idx, { notes })}
-            />
-          ))}
-
-          <TouchableOpacity
-            testID="add-exercise-btn"
-            style={styles.addExerciseBtn}
-            onPress={() => router.push("/workout/add-exercise")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="add-circle" size={22} color={colors.brand} />
-            <Text style={styles.addExerciseText}>Add Exercise</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity testID="discard-btn" style={styles.discardBtn} onPress={onDiscard}>
-            <Text style={styles.discardText}>Discard workout</Text>
-          </TouchableOpacity>
-        </ScrollView>
+        {/* Swipeable exercise pages — one exercise per slide, swipe left for the next */}
+        <FlatList
+          ref={listRef}
+          style={{ flex: 1 }}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          data={[...active.exercises, { __add: true }] as any[]}
+          keyExtractor={(item: any, i) => (item.__add ? "add-slide" : `${item.exercise_id}-${i}`)}
+          onMomentumScrollEnd={onScrollEnd}
+          renderItem={({ item, index }: { item: any; index: number }) =>
+            item.__add ? (
+              <ScrollView style={{ width }} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                {exCount === 0 && (
+                  <View style={styles.emptyExercise}>
+                    <Ionicons name="barbell-outline" size={48} color={colors.textMuted} />
+                    <Text style={styles.emptyExerciseText}>Add your first exercise</Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  testID="add-exercise-btn"
+                  style={styles.addExerciseBtn}
+                  onPress={() => router.push("/workout/add-exercise")}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add-circle" size={22} color={colors.brand} />
+                  <Text style={styles.addExerciseText}>Add Exercise</Text>
+                </TouchableOpacity>
+                <TouchableOpacity testID="discard-btn" style={styles.discardBtn} onPress={onDiscard}>
+                  <Text style={styles.discardText}>Discard workout</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : (
+              <ScrollView style={{ width }} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                <ExerciseCard
+                  index={index}
+                  ex={item}
+                  weightUnit={user?.weight_unit || "kg"}
+                  onRemove={() => removeExercise(index)}
+                  onAddSet={() => addSet(index)}
+                  onRemoveSet={(si) => removeSet(index, si)}
+                  onUpdateSet={(si, u) => updateSet(index, si, u)}
+                  onCompleteSet={(si) => completeSet(index, si)}
+                  onToggleUnilateral={(val) => updateExercise(index, { is_unilateral: val })}
+                  onChangeMachine={() => setMachineFor(index)}
+                  onChangeRest={(seconds) => updateExercise(index, { rest_seconds: seconds })}
+                  onStartRest={() => startRestTimer(item.rest_seconds || 90)}
+                  onNotes={(notes) => updateExercise(index, { notes })}
+                />
+                <TouchableOpacity style={styles.nextBtn} onPress={() => goTo(index + 1)} activeOpacity={0.7}>
+                  <Text style={styles.nextText}>{index + 1 < exCount ? "Next exercise" : "Add another exercise"}</Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.brand} />
+                </TouchableOpacity>
+              </ScrollView>
+            )
+          }
+        />
 
         {/* Machine picker modal */}
         {machineFor !== null && (
@@ -422,7 +487,18 @@ const styles = StyleSheet.create({
   restSkip: { paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.2)" },
   restSkipText: { color: "#fff", fontWeight: "700", fontSize: 12 },
   scroll: { padding: spacing.md, paddingBottom: 60 },
-  nameInput: { fontSize: 22, fontWeight: "800", color: colors.text, marginBottom: spacing.md, paddingVertical: 4 },
+  pagerTop: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  pagerNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm },
+  pageCounter: { color: colors.textSecondary, fontSize: 12, fontWeight: "800" },
+  swipeHint: { color: colors.textMuted, fontSize: 11, fontWeight: "600" },
+  dotsRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.bg3 },
+  dotActive: { backgroundColor: colors.brand, width: 10, height: 10, borderRadius: 5 },
+  dotAdd: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.bg3, alignItems: "center", justifyContent: "center" },
+  dotAddActive: { backgroundColor: colors.brand },
+  nextBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, marginTop: 4 },
+  nextText: { color: colors.brand, fontSize: 14, fontWeight: "800" },
+  nameInput: { fontSize: 22, fontWeight: "800", color: colors.text, marginBottom: spacing.sm, paddingVertical: 4 },
   exCard: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
   exHeader: { flexDirection: "row", alignItems: "flex-start" },
   exName: { color: colors.brand, fontSize: 16, fontWeight: "800" },

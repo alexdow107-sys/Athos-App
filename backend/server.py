@@ -307,23 +307,27 @@ async def startup():
     await db.blocks.create_index([("blocker_id", 1), ("blocked_id", 1)], unique=True)
     await db.blocks.create_index([("blocked_id", 1)])
     await db.reports.create_index([("status", 1), ("created_at", -1)])
-    # Seed exercises
-    if await db.exercises.count_documents({"system": True}) == 0:
-        docs = []
-        for ex in SEED_EXERCISES:
-            docs.append({
-                "exercise_id": gen_id("ex"),
-                "name": ex["name"],
-                "category": ex["category"],
-                "muscle_group": ex["muscle_group"],
-                "is_unilateral": ex["is_unilateral"],
-                "system": True,
-                "user_id": None,
-                "created_at": now_utc(),
-            })
-        if docs:
-            await db.exercises.insert_many(docs)
-        logger.info(f"Seeded {len(docs)} exercises")
+    # Seed exercises (idempotent: insert any system exercise not already present by name)
+    existing_names = set()
+    async for ex in db.exercises.find({"system": True}, {"_id": 0, "name": 1}):
+        existing_names.add(ex["name"])
+    docs = []
+    for ex in SEED_EXERCISES:
+        if ex["name"] in existing_names:
+            continue
+        docs.append({
+            "exercise_id": gen_id("ex"),
+            "name": ex["name"],
+            "category": ex["category"],
+            "muscle_group": ex["muscle_group"],
+            "is_unilateral": ex["is_unilateral"],
+            "system": True,
+            "user_id": None,
+            "created_at": now_utc(),
+        })
+    if docs:
+        await db.exercises.insert_many(docs)
+    logger.info(f"Seeded {len(docs)} new exercises ({len(existing_names)} already present)")
 
 
 @app.on_event("shutdown")
