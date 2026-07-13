@@ -1093,8 +1093,7 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
     for ex in body.exercises:
         ex_dict = ex.dict()
         ex_volume = 0.0
-        best_weight = 0.0
-        best_reps = 0
+        cur_sets: List[tuple] = []  # (weight, reps) for completed sets this workout
         for s in ex_dict["sets"]:
             if not s.get("completed"):
                 continue
@@ -1112,16 +1111,15 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
                 vol = w_ * r_
                 top_w, top_reps = w_, r_
             ex_volume += vol
-            # Heaviest set this workout (ties broken by more reps)
-            if top_w > best_weight or (top_w == best_weight and top_reps > best_reps):
-                best_weight = top_w
-                best_reps = top_reps
+            if top_w > 0 and top_reps > 0:
+                cur_sets.append((top_w, top_reps))
         total_volume += ex_volume
         ex_dict["volume"] = ex_volume
         exercises_clean.append(ex_dict)
 
-        # PR = beating the heaviest weight ever lifted for this exercise
-        prior_best_weight = 0.0
+        # Prior bests for this exercise: heaviest weight ever, and best reps at each weight
+        prior_max_weight = 0.0
+        prior_reps_at_weight: Dict[float, int] = {}
         cursor = db.workouts.find({
             "user_id": current["user_id"],
             "status": "completed",
@@ -1136,18 +1134,35 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
                     if not ps.get("completed"):
                         continue
                     if pex.get("is_unilateral"):
-                        v = max(ps.get("left_weight") or 0, ps.get("right_weight") or 0)
+                        pw_ = max(ps.get("left_weight") or 0, ps.get("right_weight") or 0)
+                        pr_ = (ps.get("left_reps") or 0) if (ps.get("left_weight") or 0) >= (ps.get("right_weight") or 0) else (ps.get("right_reps") or 0)
                     else:
-                        v = ps.get("weight") or 0
-                    if v > prior_best_weight:
-                        prior_best_weight = v
-        if best_weight > prior_best_weight and best_weight > 0:
+                        pw_ = ps.get("weight") or 0
+                        pr_ = ps.get("reps") or 0
+                    if pw_ > prior_max_weight:
+                        prior_max_weight = pw_
+                    if pw_ > 0 and pr_ > prior_reps_at_weight.get(pw_, 0):
+                        prior_reps_at_weight[pw_] = pr_
+
+        # A PR is only awarded when you went UP in weight (a new heaviest set) or
+        # UP in reps at a weight you've lifted before. Nothing otherwise.
+        weight_prs = [(cw, cr) for (cw, cr) in cur_sets if cw > prior_max_weight]
+        rep_prs = [(cw, cr) for (cw, cr) in cur_sets if cw in prior_reps_at_weight and cr > prior_reps_at_weight[cw]]
+        chosen = None
+        prior_ref = 0.0
+        if weight_prs:
+            chosen = max(weight_prs, key=lambda t: (t[0], t[1]))
+            prior_ref = prior_max_weight
+        elif rep_prs:
+            chosen = max(rep_prs, key=lambda t: (t[0], t[1]))
+            prior_ref = prior_reps_at_weight.get(chosen[0], 0)
+        if chosen:
             prs.append({
                 "exercise_id": ex.exercise_id,
                 "exercise_name": ex.exercise_name,
-                "weight": best_weight,
-                "reps": best_reps,
-                "prior_best": prior_best_weight,
+                "weight": chosen[0],
+                "reps": chosen[1],
+                "prior_best": prior_ref,
             })
 
     update = {
