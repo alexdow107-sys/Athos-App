@@ -372,11 +372,11 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
           sets: e.sets.map((s, sidx) => {
             if (sidx !== si) return s;
             const merged = { ...s, ...updates } as SetData;
-            // Auto-mark complete when weight & reps are present (no need for manual check)
+            // A set is "logged" (and counts) the moment reps are entered — works
+            // for weighted and bodyweight sets. There's no manual complete step.
             const hasData = e.is_unilateral
-              ? (Number(merged.left_weight) > 0 && Number(merged.left_reps) > 0) ||
-                (Number(merged.right_weight) > 0 && Number(merged.right_reps) > 0)
-              : Number(merged.weight) > 0 && Number(merged.reps) > 0;
+              ? Number(merged.left_reps) > 0 || Number(merged.right_reps) > 0
+              : Number(merged.reps) > 0;
             if (hasData && !merged.completed && updates.completed === undefined) {
               merged.completed = true;
             }

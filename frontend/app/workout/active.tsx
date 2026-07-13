@@ -18,7 +18,7 @@ export default function ActiveWorkoutScreen() {
   const { user } = useAuth();
   const {
     active, elapsed, restRemaining, restDuration, restRunning,
-    addSet, removeSet, updateSet, completeSet,
+    addSet, removeSet, updateSet,
     removeExercise, updateExercise, setRestDuration, startRest, pauseRest, resetRest,
     cancelWorkout, setActive,
   } = useWorkout();
@@ -84,7 +84,7 @@ export default function ActiveWorkoutScreen() {
       0,
     );
     if (totalCompletedSets === 0) {
-      Alert.alert("No completed sets", "Mark at least one set as complete before finishing.");
+      Alert.alert("Nothing logged yet", "Log at least one set (reps) before finishing.");
       return;
     }
     router.push("/workout/save" as any);
@@ -236,7 +236,6 @@ export default function ActiveWorkoutScreen() {
                   onAddSet={() => addSet(index)}
                   onRemoveSet={(si) => removeSet(index, si)}
                   onUpdateSet={(si, u) => updateSet(index, si, u)}
-                  onCompleteSet={(si) => completeSet(index, si)}
                   onToggleUnilateral={(val) => updateExercise(index, { is_unilateral: val })}
                   onChangeMachine={() => setMachineFor(index)}
                   onNotes={(notes) => updateExercise(index, { notes })}
@@ -289,14 +288,13 @@ interface ExCardProps {
   onAddSet: () => void;
   onRemoveSet: (si: number) => void;
   onUpdateSet: (si: number, u: Partial<SetData>) => void;
-  onCompleteSet: (si: number) => void;
   onToggleUnilateral: (v: boolean) => void;
   onChangeMachine: () => void;
   onNotes: (n: string) => void;
 }
 
 const ExerciseCard: React.FC<ExCardProps> = ({
-  index, ex, weightUnit, onRemove, onAddSet, onRemoveSet, onUpdateSet, onCompleteSet,
+  index, ex, weightUnit, onRemove, onAddSet, onRemoveSet, onUpdateSet,
   onToggleUnilateral, onChangeMachine, onNotes,
 }) => {
   const [history, setHistory] = useState<any>(null);
@@ -459,14 +457,13 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             </>
           )}
           <TouchableOpacity
-            testID={`complete-set-${index}-${si}`}
-            onPress={() => onCompleteSet(si)}
-            onLongPress={() => onRemoveSet(si)}
-            style={[styles.checkBtn, s.completed && styles.checkBtnActive]}
+            testID={`delete-set-${index}-${si}`}
+            onPress={() => onRemoveSet(si)}
+            style={styles.deleteSetBtn}
             activeOpacity={0.7}
-            accessibilityLabel="Long press to delete set"
+            accessibilityLabel="Delete set"
           >
-            <Ionicons name={s.completed ? "checkmark" : "trash-outline"} size={16} color={s.completed ? "#fff" : colors.textMuted} />
+            <Ionicons name="close" size={16} color={colors.danger} />
           </TouchableOpacity>
         </View>
         );
@@ -541,8 +538,7 @@ const styles = StyleSheet.create({
   setInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingVertical: 8, paddingHorizontal: 4, textAlign: "center", fontSize: 15, fontWeight: "700", color: colors.text, backgroundColor: colors.bg },
   uniGroup: { flexDirection: "row", alignItems: "center", paddingHorizontal: 4 },
   uniX: { color: colors.textMuted, marginHorizontal: 4, fontWeight: "700" },
-  checkBtn: { width: 32, height: 32, borderRadius: radius.sm, backgroundColor: colors.bg3, alignItems: "center", justifyContent: "center", marginLeft: 6 },
-  checkBtnActive: { backgroundColor: colors.success },
+  deleteSetBtn: { width: 32, height: 32, borderRadius: radius.sm, backgroundColor: colors.bg3, alignItems: "center", justifyContent: "center", marginLeft: 6 },
   addSetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, marginTop: 6, backgroundColor: colors.brandLight, borderRadius: radius.md },
   addSetText: { color: colors.brand, fontSize: 13, fontWeight: "800", marginLeft: 6 },
   addExerciseBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderWidth: 1, borderColor: colors.brand, borderStyle: "dashed", borderRadius: radius.lg, marginTop: spacing.sm },
