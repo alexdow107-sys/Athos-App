@@ -152,6 +152,11 @@ class RoutineIn(BaseModel):
     exercises: List[RoutineExerciseIn] = []
 
 
+class WeighInIn(BaseModel):
+    weight: float
+    date: Optional[str] = None  # YYYY-MM-DD; defaults to today (client local)
+
+
 class SetIn(BaseModel):
     weight: Optional[float] = 0
     reps: Optional[int] = 0
@@ -641,6 +646,43 @@ async def get_user_stats(username: str, current=Depends(get_current_user_optiona
         "muscle_distribution": [{"muscle": k, "sets": v} for k, v in sorted(muscle_sets.items(), key=lambda x: -x[1])],
         "active_days": sorted(active_days),
     }
+
+
+# ===== BODY WEIGHT TRACKING =====
+@api.post("/weigh-ins")
+async def log_weigh_in(body: WeighInIn, current=Depends(get_current_user)):
+    if body.weight <= 0 or body.weight > 1500:
+        raise HTTPException(status_code=400, detail="Enter a valid weight")
+    date = body.date or now_utc().date().isoformat()
+    # One entry per day — logging again the same day replaces it
+    await db.weigh_ins.update_one(
+        {"user_id": current["user_id"], "date": date},
+        {"$set": {"weight": body.weight, "created_at": now_utc()},
+         "$setOnInsert": {"weigh_in_id": gen_id("wi"), "user_id": current["user_id"], "date": date}},
+        upsert=True,
+    )
+    # Keep the profile's current weight in sync with the newest entry
+    latest = await db.weigh_ins.find_one({"user_id": current["user_id"]}, sort=[("date", -1)])
+    if latest and latest["date"] == date:
+        await db.users.update_one({"user_id": current["user_id"]}, {"$set": {"weight": body.weight}})
+    doc = await db.weigh_ins.find_one({"user_id": current["user_id"], "date": date}, {"_id": 0})
+    return {"weigh_in": doc}
+
+
+@api.get("/weigh-ins")
+async def list_weigh_ins(limit: int = 90, current=Depends(get_current_user)):
+    cursor = db.weigh_ins.find({"user_id": current["user_id"]}, {"_id": 0}).sort("date", -1).limit(min(limit, 365))
+    items = [w async for w in cursor]
+    items.reverse()  # oldest -> newest for charting
+    return {"weigh_ins": items, "weight_unit": current.get("weight_unit", "kg")}
+
+
+@api.delete("/weigh-ins/{weigh_in_id}")
+async def delete_weigh_in(weigh_in_id: str, current=Depends(get_current_user)):
+    res = await db.weigh_ins.delete_one({"weigh_in_id": weigh_in_id, "user_id": current["user_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 @api.post("/users/{user_id}/follow")
@@ -1613,6 +1655,16 @@ async def create_comment(post_id: str, body: CommentIn, current=Depends(get_curr
     await db.posts.update_one({"post_id": post_id}, {"$inc": {"comments_count": 1}})
     if p["user_id"] != current["user_id"]:
         await create_notification(p["user_id"], "comment" if not body.parent_id else "reply", current["user_id"], post_id)
+    # @mentions — notify each mentioned user (once, and not the post owner twice)
+    mentioned = set(re.findall(r"@([a-zA-Z0-9_]{3,20})", body.text or ""))
+    if mentioned:
+        blocked = await blocked_user_ids(current["user_id"])
+        async for mu in db.users.find({"username": {"$in": [m.lower() for m in mentioned]}}, {"_id": 0, "user_id": 1, "is_banned": 1}):
+            if mu.get("is_banned") or mu["user_id"] in blocked:
+                continue
+            if mu["user_id"] in (current["user_id"], p["user_id"]):
+                continue  # no self-mention notif; owner already got the comment notif
+            await create_notification(mu["user_id"], "mention", current["user_id"], post_id)
     doc.pop("_id", None)
     doc["user"] = public_user(current)
     return {"comment": doc}
@@ -1632,6 +1684,51 @@ async def list_comments(post_id: str, current=Depends(get_current_user_optional)
 async def post_by_workout(workout_id: str, current=Depends(get_current_user_optional)):
     p = await db.posts.find_one({"workout_id": workout_id}, {"_id": 0})
     return {"post": p}
+
+
+@api.get("/exercises/{exercise_id}/leaderboard")
+async def exercise_leaderboard(exercise_id: str, current=Depends(get_current_user)):
+    """Best set (heaviest weight, ties by reps) for this exercise among you and
+    the people you follow. Private accounts you follow are fine — following
+    means you can see their training."""
+    ids = [current["user_id"]]
+    async for f in db.follows.find({"follower_id": current["user_id"], "status": "accepted"}):
+        ids.append(f["following_id"])
+
+    best: Dict[str, dict] = {}  # user_id -> {weight, reps, date}
+    cursor = db.workouts.find({
+        "user_id": {"$in": ids},
+        "status": "completed",
+        "exercises.exercise_id": exercise_id,
+    }, {"_id": 0, "user_id": 1, "started_at": 1, "exercises": 1})
+    async for w in cursor:
+        uid = w["user_id"]
+        for ex in w.get("exercises", []):
+            if ex.get("exercise_id") != exercise_id:
+                continue
+            for s in ex.get("sets", []):
+                if not s.get("completed"):
+                    continue
+                if ex.get("is_unilateral"):
+                    wt = max(s.get("left_weight") or 0, s.get("right_weight") or 0)
+                    rp = (s.get("left_reps") or 0) if (s.get("left_weight") or 0) >= (s.get("right_weight") or 0) else (s.get("right_reps") or 0)
+                else:
+                    wt = s.get("weight") or 0
+                    rp = s.get("reps") or 0
+                if wt <= 0:
+                    continue
+                cur = best.get(uid)
+                if not cur or wt > cur["weight"] or (wt == cur["weight"] and rp > cur["reps"]):
+                    best[uid] = {"weight": wt, "reps": rp, "date": w.get("started_at")}
+
+    entries = []
+    for uid, b in best.items():
+        u = await db.users.find_one({"user_id": uid}, {"_id": 0})
+        if not u or u.get("is_banned"):
+            continue
+        entries.append({"user": public_user(u), "is_self": uid == current["user_id"], **b})
+    entries.sort(key=lambda e: (-e["weight"], -e["reps"]))
+    return {"leaderboard": entries[:50], "weight_unit": current.get("weight_unit", "kg")}
 
 
 # ===== NOTIFICATIONS =====

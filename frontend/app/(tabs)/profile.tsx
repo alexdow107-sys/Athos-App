@@ -12,6 +12,7 @@ import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
 import { Avatar } from "@/src/components/Avatar";
+import { BodyWeightCard } from "@/src/components/BodyWeightCard";
 import { fmtDuration, fmtVolume, fmtDistance } from "@/src/utils/format";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -55,6 +56,7 @@ export default function ProfileScreen() {
   const [statsPublicOverride, setStatsPublicOverride] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [bwKey, setBwKey] = useState(0); // bump to make BodyWeightCard refetch
 
   const load = useCallback(async () => {
     if (!user?.user_id) return;
@@ -67,6 +69,7 @@ export default function ProfileScreen() {
       setWorkouts(wRes.workouts || []);
       setCardio(cRes.cardio || []);
       setStats(sRes);
+      setBwKey((k) => k + 1);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -245,6 +248,12 @@ export default function ProfileScreen() {
           <ProfileStatCard icon="repeat-outline" value={String(stats?.total_sets ?? 0)} label="Total sets" sub="this month" />
           <ProfileStatCard icon="barbell-outline" value={fmtVolume(stats?.total_volume ?? 0, user.weight_unit || "kg")} label="Volume" sub="this month" />
         </View>
+
+        {/* Body weight */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Body Weight</Text>
+        </View>
+        <BodyWeightCard weightUnit={user.weight_unit || "kg"} refreshKey={bwKey} />
 
         {/* Muscle distribution */}
         {stats?.muscle_distribution?.length > 0 && (

@@ -7,6 +7,24 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
+
+/** Renders comment text with @username mentions highlighted and tappable. */
+function MentionText({ text, style, onMention }: { text: string; style: any; onMention: (username: string) => void }) {
+  const parts = String(text || "").split(/(@[a-zA-Z0-9_]{3,20})/g);
+  return (
+    <Text style={style}>
+      {parts.map((part, i) =>
+        part.startsWith("@") ? (
+          <Text key={i} style={{ color: colors.brand, fontWeight: "800" }} onPress={() => onMention(part.slice(1))}>
+            {part}
+          </Text>
+        ) : (
+          <Text key={i}>{part}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
 import { Avatar } from "@/src/components/Avatar";
 import { ShareToChatSheet, SharePayload } from "@/src/components/ShareToChatSheet";
 import { fmtDuration, fmtVolume, fmtDate, fmtRelative } from "@/src/utils/format";
@@ -225,7 +243,11 @@ export default function WorkoutDetailScreen() {
                   <Avatar uri={c.user?.profile_picture} name={c.user?.display_name} size={32} />
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.commentUser}>{c.user?.display_name || "User"}</Text>
-                    <Text style={styles.commentText}>{c.text}</Text>
+                    <MentionText
+                      text={c.text}
+                      style={styles.commentText}
+                      onMention={(username) => router.push(`/user/${username}`)}
+                    />
                     <Text style={styles.commentTime}>{fmtRelative(c.created_at)}</Text>
                   </View>
                 </View>

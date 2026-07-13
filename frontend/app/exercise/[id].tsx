@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
+import { Avatar } from "@/src/components/Avatar";
 
 export default function ExerciseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,16 +15,19 @@ export default function ExerciseDetailScreen() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
+  const [board, setBoard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const [d, h] = await Promise.all([
+      const [d, h, lb] = await Promise.all([
         api<any>(`/analytics/exercise/${id}`).catch(() => null),  // non-fatal if it errors
         api<any>(`/exercises/${id}/history`),
+        api<any>(`/exercises/${id}/leaderboard`).catch(() => ({ leaderboard: [] })),
       ]);
       setData(d);
       setHistory(h);
+      setBoard(lb?.leaderboard || []);
     } finally { setLoading(false); }
   }, [id]);
 
@@ -115,6 +119,31 @@ export default function ExerciseDetailScreen() {
           </View>
         )}
 
+        {/* Friends leaderboard — your best vs the people you follow */}
+        {board.length > 0 && (
+          <>
+            <Text style={styles.section}>Friends Leaderboard</Text>
+            <View style={styles.boardCard}>
+              {board.slice(0, 10).map((e: any, i: number) => (
+                <TouchableOpacity
+                  key={e.user?.user_id || i}
+                  style={[styles.boardRow, e.is_self && styles.boardRowSelf]}
+                  activeOpacity={0.7}
+                  onPress={() => !e.is_self && e.user?.username && router.push(`/user/${e.user.username}`)}
+                >
+                  <Text style={[styles.boardRank, i === 0 && { color: colors.pr }]}>{i + 1}</Text>
+                  <Avatar uri={e.user?.profile_picture} name={e.user?.display_name} size={32} />
+                  <Text style={styles.boardName} numberOfLines={1}>
+                    {e.is_self ? "You" : e.user?.display_name || "User"}
+                  </Text>
+                  {i === 0 && <Ionicons name="trophy" size={13} color={colors.pr} />}
+                  <Text style={styles.boardLift}>{e.weight} {wu}{e.reps ? ` × ${e.reps}` : ""}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
         <Text style={styles.section}>Recent Sessions</Text>
         {sessions.length === 0 ? (
           <Text style={styles.noData}>No sessions yet</Text>
@@ -162,6 +191,12 @@ const styles = StyleSheet.create({
   barCol: { flex: 1, alignItems: "center" },
   barVal: { fontSize: 9, color: colors.textMuted, fontWeight: "700" },
   bar: { width: "70%", backgroundColor: colors.brand, borderRadius: 3, marginTop: 2 },
+  boardCard: { marginHorizontal: spacing.md, backgroundColor: colors.bg2, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
+  boardRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  boardRowSelf: { backgroundColor: colors.brandLight },
+  boardRank: { width: 20, textAlign: "center", color: colors.textMuted, fontWeight: "900", fontSize: 13 },
+  boardName: { flex: 1, color: colors.text, fontWeight: "700", fontSize: 14 },
+  boardLift: { color: colors.brand, fontWeight: "900", fontSize: 14, fontVariant: ["tabular-nums"] },
   sessionRow: { paddingHorizontal: spacing.md, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.divider },
   sessionDate: { color: colors.text, fontWeight: "700", fontSize: 13 },
   sessionSets: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },

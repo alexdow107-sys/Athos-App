@@ -16,6 +16,7 @@ const ICONS: Record<string, any> = {
   like: { name: "heart", color: colors.danger },
   comment: { name: "chatbubble", color: colors.brand },
   reply: { name: "chatbubble-ellipses", color: colors.brand },
+  mention: { name: "at", color: colors.warning },
   save: { name: "bookmark", color: colors.brand },
 };
 
@@ -26,6 +27,7 @@ const LABELS: Record<string, string> = {
   like: "liked your workout",
   comment: "commented on your workout",
   reply: "replied to your comment",
+  mention: "mentioned you in a comment",
   save: "saved your workout",
 };
 
