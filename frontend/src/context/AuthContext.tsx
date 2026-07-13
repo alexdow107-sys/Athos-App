@@ -14,6 +14,7 @@ export interface AthoUser {
   workouts_count?: number;
   currently_working_out?: boolean;
   hide_followers?: boolean;
+  show_stats?: boolean;
   show_workout_status?: boolean;
   auth_provider?: string;
   needs_setup?: boolean;

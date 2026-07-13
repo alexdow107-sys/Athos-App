@@ -51,23 +51,27 @@ export default function ProfileScreen() {
   const { user, refresh } = useAuth();
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [cardio, setCardio] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [statsPublicOverride, setStatsPublicOverride] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.user_id) return;
     try {
-      const [wRes, cRes] = await Promise.all([
+      const [wRes, cRes, sRes] = await Promise.all([
         api<{ workouts: any[] }>(`/workouts/user/${user.user_id}?limit=60`).catch(() => ({ workouts: [] })),
         api<{ cardio: any[] }>("/cardio?limit=60").catch(() => ({ cardio: [] })),
+        api<any>(`/users/${user.username}/stats`).catch(() => null),
       ]);
       setWorkouts(wRes.workouts || []);
       setCardio(cRes.cardio || []);
+      setStats(sRes);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.user_id]);
+  }, [user?.user_id, user?.username]);
 
   useFocusEffect(useCallback(() => {
     setLoading(true); load();
@@ -82,6 +86,20 @@ export default function ProfileScreen() {
   const weekDates = getWeekDates(workouts);
   const todayDow = new Date().getDay();
   const streak = computeStreak(workouts, cardio);
+
+  // Whether this month's stats are visible to other people (owner always sees them).
+  const statsPublic = statsPublicOverride ?? (user.show_stats ?? true);
+  const toggleStatsPublic = async () => {
+    const next = !statsPublic;
+    setStatsPublicOverride(next);
+    try {
+      await api("/users/me", { method: "PATCH", body: JSON.stringify({ show_stats: next }) });
+      refresh();
+    } catch {
+      setStatsPublicOverride(!next);
+    }
+  };
+  const muscleMax = stats?.muscle_distribution?.[0]?.sets || 0;
 
   // Weekly stats
   const now = new Date();
@@ -210,6 +228,44 @@ export default function ProfileScreen() {
           <ProfileStatCard icon="time-outline" value={fmtDuration(weekDuration)} label="Total time" sub="this week" />
           <ProfileStatCard icon="barbell-outline" value={fmtVolume(weekVolume, user.weight_unit || "kg")} label="Volume lifted" sub="this week" wide />
         </View>
+
+        {/* This Month + privacy toggle */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>This Month</Text>
+          <TouchableOpacity testID="stats-privacy-toggle" onPress={toggleStatsPublic} style={styles.privacyToggle} activeOpacity={0.7}>
+            <Ionicons name={statsPublic ? "earth" : "lock-closed"} size={12} color={statsPublic ? colors.brand : colors.textMuted} />
+            <Text style={[styles.privacyToggleText, { color: statsPublic ? colors.brand : colors.textMuted }]}>
+              {statsPublic ? "Public" : "Private"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.progressGrid}>
+          <ProfileStatCard icon="calendar-outline" value={String(stats?.workouts ?? 0)} label="Workouts" sub="this month" />
+          <ProfileStatCard icon="flame-outline" value={String(stats?.days_worked_out ?? 0)} label="Days trained" sub="this month" />
+          <ProfileStatCard icon="repeat-outline" value={String(stats?.total_sets ?? 0)} label="Total sets" sub="this month" />
+          <ProfileStatCard icon="barbell-outline" value={fmtVolume(stats?.total_volume ?? 0, user.weight_unit || "kg")} label="Volume" sub="this month" />
+        </View>
+
+        {/* Muscle distribution */}
+        {stats?.muscle_distribution?.length > 0 && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Muscle Focus</Text>
+              <Text style={styles.mutedHint}>sets this month</Text>
+            </View>
+            <View style={styles.muscleCard}>
+              {stats.muscle_distribution.map((m: any) => (
+                <View key={m.muscle} style={styles.muscleRow}>
+                  <Text style={styles.muscleName}>{m.muscle.replace(/_/g, " ")}</Text>
+                  <View style={styles.muscleBarTrack}>
+                    <View style={[styles.muscleBarFill, { width: `${muscleMax > 0 ? (m.sets / muscleMax) * 100 : 0}%` }]} />
+                  </View>
+                  <Text style={styles.muscleSets}>{m.sets}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
         {/* Recent Activity */}
         {recentActivity.length > 0 && (
@@ -368,6 +424,26 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 11, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1 },
   seeAll: { fontSize: 13, fontWeight: "700", color: colors.brand },
+  mutedHint: { fontSize: 11, color: colors.textMuted, fontWeight: "600" },
+  privacyToggle: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg3,
+  },
+  privacyToggleText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.3 },
+
+  // Muscle distribution
+  muscleCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.bg2, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border,
+    padding: spacing.md, gap: 10,
+  },
+  muscleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  muscleName: { width: 78, fontSize: 12, fontWeight: "700", color: colors.textSecondary, textTransform: "capitalize" },
+  muscleBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg3, overflow: "hidden" },
+  muscleBarFill: { height: 8, borderRadius: 4, backgroundColor: colors.brand },
+  muscleSets: { width: 26, textAlign: "right", fontSize: 12, fontWeight: "800", color: colors.text },
 
   weekStrip: {
     flexDirection: "row", justifyContent: "space-around",

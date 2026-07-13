@@ -18,6 +18,7 @@ export default function UserProfileScreen() {
   const { user: me } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,6 +35,11 @@ export default function UserProfileScreen() {
         setWorkouts(w.workouts);
       } else {
         setWorkouts([]);
+      }
+      if (!u.user.is_blocked) {
+        setStats(await api<any>(`/users/${username}/stats`).catch(() => null));
+      } else {
+        setStats(null);
       }
     } catch (e) {
       console.warn(e);
@@ -189,6 +195,30 @@ export default function UserProfileScreen() {
           </View>
         ) : (
           <>
+            {stats?.visible && (
+              <>
+                <Text style={styles.section}>This Month</Text>
+                <View style={styles.monthGrid}>
+                  <View style={styles.monthCard}><Text style={styles.monthVal}>{stats.workouts ?? 0}</Text><Text style={styles.monthLbl}>Workouts</Text></View>
+                  <View style={styles.monthCard}><Text style={styles.monthVal}>{stats.days_worked_out ?? 0}</Text><Text style={styles.monthLbl}>Days</Text></View>
+                  <View style={styles.monthCard}><Text style={styles.monthVal}>{stats.total_sets ?? 0}</Text><Text style={styles.monthLbl}>Sets</Text></View>
+                  <View style={styles.monthCard}><Text style={styles.monthVal}>{fmtVolume(stats.total_volume ?? 0, stats.weight_unit || "kg")}</Text><Text style={styles.monthLbl}>Volume</Text></View>
+                </View>
+                {stats.muscle_distribution?.length > 0 && (
+                  <View style={styles.muscleCard}>
+                    {stats.muscle_distribution.map((m: any) => (
+                      <View key={m.muscle} style={styles.muscleRow}>
+                        <Text style={styles.muscleName}>{m.muscle.replace(/_/g, " ")}</Text>
+                        <View style={styles.muscleBarTrack}>
+                          <View style={[styles.muscleBarFill, { width: `${stats.muscle_distribution[0].sets > 0 ? (m.sets / stats.muscle_distribution[0].sets) * 100 : 0}%` }]} />
+                        </View>
+                        <Text style={styles.muscleSets}>{m.sets}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
             <Text style={styles.section}>Workouts</Text>
             {workouts.length === 0 ? (
               <Text style={styles.noWorkouts}>No workouts yet</Text>
@@ -249,6 +279,20 @@ const styles = StyleSheet.create({
   followTextFollowing: { color: colors.text, fontWeight: "700", fontSize: 13 },
   section: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: colors.textMuted, padding: spacing.md, textTransform: "uppercase", borderTopWidth: 1, borderTopColor: colors.divider, marginTop: spacing.md },
   noWorkouts: { color: colors.textMuted, padding: spacing.md, fontStyle: "italic" },
+  monthGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: spacing.md },
+  monthCard: {
+    flex: 1, minWidth: "40%", alignItems: "center",
+    backgroundColor: colors.bg2, borderRadius: radius.lg,
+    paddingVertical: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  monthVal: { fontSize: 20, fontWeight: "900", color: colors.text, letterSpacing: -0.5 },
+  monthLbl: { fontSize: 11, fontWeight: "700", color: colors.textMuted, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.4 },
+  muscleCard: { marginHorizontal: spacing.md, marginTop: spacing.sm, backgroundColor: colors.bg2, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: 10 },
+  muscleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  muscleName: { width: 78, fontSize: 12, fontWeight: "700", color: colors.textSecondary, textTransform: "capitalize" },
+  muscleBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg3, overflow: "hidden" },
+  muscleBarFill: { height: 8, borderRadius: 4, backgroundColor: colors.brand },
+  muscleSets: { width: 26, textAlign: "right", fontSize: 12, fontWeight: "800", color: colors.text },
   workoutItem: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
   workoutName: { color: colors.text, fontSize: 15, fontWeight: "700" },
   workoutMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
