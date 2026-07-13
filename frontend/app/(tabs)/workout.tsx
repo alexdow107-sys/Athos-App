@@ -419,6 +419,8 @@ export default function WorkoutTab() {
         {/* Tools */}
         <Text style={styles.sectionHeader}>More</Text>
         <View style={styles.menuCard}>
+          <MenuRow testID="goto-routines" icon="repeat-outline" title="Routines" sub="Reusable workout templates" onPress={() => router.push("/routines" as any)} />
+          <View style={styles.menuDivider} />
           <MenuRow testID="goto-plan" icon="calendar-outline" title="My Plan" sub="View your weekly training split" onPress={() => router.push("/plan")} />
           <View style={styles.menuDivider} />
           <MenuRow testID="build-plan-cta" icon="options-outline" title="Build a Plan" sub="Personalised split from your goals" onPress={() => router.push("/plan-questionnaire")} />

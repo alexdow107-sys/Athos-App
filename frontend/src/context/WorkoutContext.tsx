@@ -60,6 +60,7 @@ interface WorkoutCtx {
   restDuration: number;
   restRunning: boolean;
   startWorkout: (name?: string) => Promise<ActiveWorkout>;
+  startWorkoutFromRoutine: (routine: { name: string; exercises: any[] }) => Promise<ActiveWorkout>;
   finishWorkout: (extras?: { caption?: string; photos?: string[]; visibility?: "public" | "private"; name?: string }) => Promise<any>;
   cancelWorkout: () => Promise<void>;
   addExercise: (ex: { exercise_id: string; exercise_name: string; is_unilateral: boolean; machine?: string | null }) => void;
@@ -224,6 +225,43 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActive(w);
     // Show lock-screen notification immediately
     showWorkoutNotification({ workoutName: w.name, elapsedSeconds: 0, exerciseCount: 0 });
+    lastNotifElapsed.current = 0;
+    return w;
+  };
+
+  // Start a workout pre-filled from a routine — exercises are laid out with empty
+  // sets so the user only logs weight & reps.
+  const startWorkoutFromRoutine = async (routine: { name: string; exercises: any[] }) => {
+    const r = await api<{ workout: any }>("/workouts/start", {
+      method: "POST",
+      body: JSON.stringify({ name: routine.name || "Workout", local_date: localDateStr() }),
+    });
+    const w: ActiveWorkout = {
+      workout_id: r.workout.workout_id,
+      name: r.workout.name,
+      notes: r.workout.notes,
+      exercises: (routine.exercises || []).map((ex: any) => {
+        const uni = !!ex.is_unilateral;
+        const count = Math.max(1, ex.target_sets || 1);
+        const sets: SetData[] = Array.from({ length: count }, () =>
+          uni
+            ? { left_weight: 0, left_reps: 0, right_weight: 0, right_reps: 0, completed: false }
+            : { weight: 0, reps: 0, completed: false },
+        );
+        return {
+          exercise_id: ex.exercise_id,
+          exercise_name: ex.exercise_name,
+          is_unilateral: uni,
+          machine: ex.machine || null,
+          notes: "",
+          sets,
+          rest_seconds: 90,
+        };
+      }),
+      started_at: r.workout.started_at,
+    };
+    setActive(w);
+    showWorkoutNotification({ workoutName: w.name, elapsedSeconds: 0, exerciseCount: w.exercises.length });
     lastNotifElapsed.current = 0;
     return w;
   };
@@ -421,6 +459,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         restRemaining,
         restDuration: rest?.duration || 0,
         startWorkout,
+        startWorkoutFromRoutine,
         finishWorkout,
         cancelWorkout,
         addExercise,

@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 
+import { api } from "@/src/api/client";
 import { useWorkout } from "@/src/context/WorkoutContext";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
@@ -27,6 +28,7 @@ export default function SaveWorkoutScreen() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [visSheetOpen, setVisSheetOpen] = useState(false);
+  const [saveAsRoutine, setSaveAsRoutine] = useState(false);
   const [saving, setSaving] = useState(false);
   const [prs, setPrs] = useState<any[] | null>(null);
 
@@ -88,6 +90,23 @@ export default function SaveWorkoutScreen() {
   const onSave = async () => {
     setSaving(true);
     try {
+      // Optionally save this workout's exercises as a reusable routine (before
+      // finishWorkout clears the active workout).
+      if (saveAsRoutine && active) {
+        const routineExercises = active.exercises.map((ex) => ({
+          exercise_id: ex.exercise_id,
+          exercise_name: ex.exercise_name,
+          is_unilateral: ex.is_unilateral,
+          machine: ex.machine || null,
+          target_sets: Math.max(1, ex.sets.length),
+        }));
+        if (routineExercises.length > 0) {
+          await api("/routines", {
+            method: "POST",
+            body: JSON.stringify({ name, exercises: routineExercises }),
+          }).catch(() => {});
+        }
+      }
       const r = await finishWorkout({
         name,
         caption,
@@ -236,6 +255,23 @@ export default function SaveWorkoutScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </TouchableOpacity>
 
+          {/* Save as routine */}
+          <TouchableOpacity
+            testID="save-as-routine-toggle"
+            onPress={() => setSaveAsRoutine((v) => !v)}
+            style={styles.rowItem}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="repeat" size={20} color={colors.text} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>Save as routine</Text>
+              <Text style={styles.rowSub}>Reuse these exercises next time — just log weight & reps</Text>
+            </View>
+            <View style={[styles.checkbox, saveAsRoutine && styles.checkboxOn]}>
+              {saveAsRoutine && <Ionicons name="checkmark" size={15} color={colors.textInverse} />}
+            </View>
+          </TouchableOpacity>
+
           {/* Discard */}
           <TouchableOpacity
             testID="save-discard-btn"
@@ -348,6 +384,8 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.text, fontWeight: "800", fontSize: 14 },
   rowSub: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   rowValue: { color: colors.brand, fontWeight: "800", fontSize: 13 },
+  checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  checkboxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
 
   discardBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,

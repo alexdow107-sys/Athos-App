@@ -61,6 +61,18 @@ export default function WorkoutDetailScreen() {
     }
   };
 
+  const onSaveAsRoutine = async () => {
+    try {
+      await api(`/routines/from-workout/${id}`, { method: "POST" });
+      if (Platform.OS === "web") window.alert("Saved to your routines");
+      else Alert.alert("Saved", "This workout was saved to your routines.");
+    } catch (e: any) {
+      const msg = e?.message || "Could not save routine";
+      if (Platform.OS === "web") window.alert("Failed: " + msg);
+      else Alert.alert("Failed", msg);
+    }
+  };
+
   const onDelete = async () => {
     const doDelete = async () => {
       try {
@@ -197,6 +209,13 @@ export default function WorkoutDetailScreen() {
             </View>
           ))}
 
+          {isOwn && (w.exercises || []).length > 0 && (
+            <TouchableOpacity testID="save-as-routine-btn" style={styles.routineBtn} onPress={onSaveAsRoutine} activeOpacity={0.8}>
+              <Ionicons name="repeat" size={17} color={colors.brand} />
+              <Text style={styles.routineBtnText}>Save as routine</Text>
+            </TouchableOpacity>
+          )}
+
           {postId && (
             <View>
               <Text style={styles.sectionLabel}>Comments</Text>
@@ -261,6 +280,8 @@ const styles = StyleSheet.create({
   prName: { color: colors.text, fontWeight: "700" },
   prValue: { color: colors.pr, fontWeight: "800" },
   exerciseBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
+  routineBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginHorizontal: spacing.md, marginTop: spacing.lg, paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.brand, backgroundColor: colors.brandLight },
+  routineBtnText: { color: colors.brand, fontWeight: "800", fontSize: 14 },
   exName: { color: colors.brand, fontSize: 15, fontWeight: "800" },
   exMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   setRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },

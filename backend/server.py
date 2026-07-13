@@ -121,6 +121,7 @@ class ProfileUpdateIn(BaseModel):
     weight: Optional[float] = None
     is_private: Optional[bool] = None
     hide_followers: Optional[bool] = None
+    show_stats: Optional[bool] = None
     show_workout_status: Optional[bool] = None
     workout_status_audience: Optional[str] = None  # everyone | followers | close_friends
     close_friends: Optional[List[str]] = None
@@ -136,6 +137,19 @@ class ExerciseCreateIn(BaseModel):
     category: str
     muscle_group: str
     is_unilateral: bool = False
+
+
+class RoutineExerciseIn(BaseModel):
+    exercise_id: str
+    exercise_name: str
+    is_unilateral: bool = False
+    machine: Optional[str] = None
+    target_sets: int = 3
+
+
+class RoutineIn(BaseModel):
+    name: str
+    exercises: List[RoutineExerciseIn] = []
 
 
 class SetIn(BaseModel):
@@ -269,6 +283,7 @@ def public_user(u: dict, viewer: Optional[dict] = None) -> dict:
         "active_workout_started_at": u.get("active_workout_started_at") if u.get("show_workout_status", True) and u.get("currently_working_out") else None,
         "active_workout_activity_type": u.get("active_workout_activity_type") if u.get("show_workout_status", True) and u.get("currently_working_out") else None,
         "hide_followers": u.get("hide_followers", False),
+        "show_stats": u.get("show_stats", True),
         "show_workout_status": u.get("show_workout_status", True),
         "workout_status_audience": u.get("workout_status_audience", "everyone"),
         "auth_provider": u.get("auth_provider", "email"),
@@ -300,6 +315,7 @@ async def startup():
     await db.exercises.create_index([("category", 1)])
     await db.workouts.create_index([("user_id", 1), ("started_at", -1)])
     await db.workouts.create_index([("user_id", 1), ("date", 1)])
+    await db.routines.create_index([("user_id", 1), ("updated_at", -1)])
     await db.posts.create_index([("created_at", -1)])
     await db.follows.create_index([("follower_id", 1), ("following_id", 1)], unique=True)
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
@@ -363,6 +379,7 @@ async def register(body: RegisterIn):
         "is_private": False,
         "is_premium": False,
         "hide_followers": False,
+        "show_stats": True,
         "show_workout_status": True,
         "followers_count": 0,
         "following_count": 0,
@@ -518,6 +535,75 @@ async def get_user_profile(username: str, current=Depends(get_current_user_optio
         profile["is_self"] = False
         profile["is_blocked"] = False
     return {"user": profile}
+
+
+def _month_bounds(dt: datetime) -> tuple:
+    """Return (first_day, first_of_next_month) as ISO date strings for dt's month."""
+    start = dt.replace(day=1)
+    nxt = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
+    return start.date().isoformat(), nxt.date().isoformat()
+
+
+@api.get("/users/{username}/stats")
+async def get_user_stats(username: str, current=Depends(get_current_user_optional)):
+    """Monthly training stats for a profile: workouts, days trained, sets, volume,
+    and a per-muscle-group set distribution. Hidden if the owner made stats private."""
+    u = await db.users.find_one({"username": username.lower()}, {"_id": 0})
+    if not u or u.get("is_banned"):
+        raise HTTPException(status_code=404, detail="User not found")
+
+    is_self = bool(current and current["user_id"] == u["user_id"])
+    if not is_self:
+        if not u.get("show_stats", True):
+            return {"visible": False, "reason": "private"}
+        if u.get("is_private"):
+            f = await db.follows.find_one({
+                "follower_id": current["user_id"], "following_id": u["user_id"], "status": "accepted",
+            }) if current else None
+            if not f:
+                return {"visible": False, "reason": "private"}
+
+    month_start, month_end = _month_bounds(now_utc())
+
+    # exercise_id -> muscle group map
+    ex_muscles: Dict[str, str] = {}
+    async for ex in db.exercises.find({}, {"_id": 0, "exercise_id": 1, "muscle_group": 1}):
+        ex_muscles[ex["exercise_id"]] = ex.get("muscle_group", "other")
+
+    workouts = 0
+    total_sets = 0
+    total_volume = 0.0
+    active_days = set()
+    muscle_sets: Dict[str, int] = {}
+    cursor = db.workouts.find({
+        "user_id": u["user_id"],
+        "status": "completed",
+        "date": {"$gte": month_start, "$lt": month_end},
+    })
+    async for w in cursor:
+        workouts += 1
+        total_volume += w.get("total_volume", 0) or 0
+        if w.get("date"):
+            active_days.add(w["date"])
+        for ex in w.get("exercises", []):
+            mg = ex_muscles.get(ex.get("exercise_id"), "other")
+            completed = sum(1 for s in ex.get("sets", []) if s.get("completed"))
+            total_sets += completed
+            if completed:
+                muscle_sets[mg] = muscle_sets.get(mg, 0) + completed
+
+    return {
+        "visible": True,
+        "is_self": is_self,
+        "month": month_start[:7],
+        "workouts": workouts,
+        "days_worked_out": len(active_days),
+        "total_sets": total_sets,
+        "total_volume": round(total_volume, 1),
+        "weight_unit": u.get("weight_unit", "kg"),
+        "muscle_distribution": [{"muscle": k, "sets": v} for k, v in sorted(muscle_sets.items(), key=lambda x: -x[1])],
+        "active_days": sorted(active_days),
+    }
 
 
 @api.post("/users/{user_id}/follow")
@@ -744,6 +830,87 @@ async def create_custom_exercise(body: ExerciseCreateIn, current=Depends(get_cur
     await db.exercises.insert_one(doc)
     doc.pop("_id", None)
     return {"exercise": doc}
+
+
+# ===== ROUTINES (reusable workout templates) =====
+@api.get("/routines")
+async def list_routines(current=Depends(get_current_user)):
+    items = [r async for r in db.routines.find({"user_id": current["user_id"]}, {"_id": 0}).sort("updated_at", -1)]
+    return {"routines": items}
+
+
+@api.post("/routines")
+async def create_routine(body: RoutineIn, current=Depends(get_current_user)):
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail="Routine name required")
+    if not body.exercises:
+        raise HTTPException(status_code=400, detail="Add at least one exercise")
+    now = now_utc()
+    doc = {
+        "routine_id": gen_id("rt"),
+        "user_id": current["user_id"],
+        "name": body.name.strip()[:80],
+        "exercises": [e.dict() for e in body.exercises],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.routines.insert_one(doc)
+    doc.pop("_id", None)
+    return {"routine": doc}
+
+
+@api.post("/routines/from-workout/{workout_id}")
+async def routine_from_workout(workout_id: str, current=Depends(get_current_user)):
+    w = await db.workouts.find_one({"workout_id": workout_id, "user_id": current["user_id"]}, {"_id": 0})
+    if not w:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    exercises = []
+    for ex in w.get("exercises", []):
+        if not ex.get("exercise_id"):
+            continue
+        exercises.append({
+            "exercise_id": ex["exercise_id"],
+            "exercise_name": ex.get("exercise_name", "Exercise"),
+            "is_unilateral": ex.get("is_unilateral", False),
+            "machine": ex.get("machine"),
+            "target_sets": max(1, len(ex.get("sets", []) or [])),
+        })
+    if not exercises:
+        raise HTTPException(status_code=400, detail="Workout has no exercises")
+    now = now_utc()
+    doc = {
+        "routine_id": gen_id("rt"),
+        "user_id": current["user_id"],
+        "name": (w.get("name") or "Routine")[:80],
+        "exercises": exercises,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.routines.insert_one(doc)
+    doc.pop("_id", None)
+    return {"routine": doc}
+
+
+@api.patch("/routines/{routine_id}")
+async def update_routine(routine_id: str, body: RoutineIn, current=Depends(get_current_user)):
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail="Routine name required")
+    res = await db.routines.update_one(
+        {"routine_id": routine_id, "user_id": current["user_id"]},
+        {"$set": {"name": body.name.strip()[:80], "exercises": [e.dict() for e in body.exercises], "updated_at": now_utc()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Routine not found")
+    r = await db.routines.find_one({"routine_id": routine_id}, {"_id": 0})
+    return {"routine": r}
+
+
+@api.delete("/routines/{routine_id}")
+async def delete_routine(routine_id: str, current=Depends(get_current_user)):
+    res = await db.routines.delete_one({"routine_id": routine_id, "user_id": current["user_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Routine not found")
+    return {"ok": True}
 
 
 def detect_weight_stall(sessions: List[dict], weight_unit: str) -> Optional[dict]:
