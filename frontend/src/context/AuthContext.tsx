@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api, setToken, clearToken, getToken } from "@/src/api/client";
+import { storage } from "@/src/utils/storage";
+
+const USER_KEY = "atho_user";
 
 export interface AthoUser {
   user_id: string;
@@ -45,27 +48,53 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AthoUser | null>(null);
+  const [user, setUserState] = useState<AthoUser | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Set the user and persist a copy so the next app launch can render instantly.
+  const setUser = useCallback((u: AthoUser | null) => {
+    setUserState(u);
+    if (u) storage.setItem(USER_KEY, JSON.stringify(u) as any);
+    else storage.removeItem(USER_KEY);
+  }, []);
+
   const refresh = useCallback(async () => {
+    const t = await getToken();
+    if (!t) {
+      setUser(null);
+      return;
+    }
     try {
-      const t = await getToken();
-      if (!t) {
-        setUser(null);
-        return;
-      }
       const r = await api<{ user: AthoUser }>("/auth/me");
       setUser(r.user);
-    } catch {
-      setUser(null);
-      await clearToken();
+    } catch (e: any) {
+      // Only sign out on a real auth failure (invalid/expired token). For network,
+      // timeout, or server (5xx) errors — e.g. a cold backend — keep the cached
+      // user so the app stays usable and doesn't boot you to the login screen.
+      if (e?.status === 401 || e?.status === 403) {
+        setUser(null);
+        await clearToken();
+      }
     }
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     (async () => {
-      setLoading(true);
+      // 1. Show the last-known user immediately — no network wait on launch.
+      let hadCache = false;
+      try {
+        const [cached, token] = await Promise.all([
+          storage.getItem(USER_KEY, "") as Promise<string>,
+          getToken(),
+        ]);
+        if (token && cached && typeof cached === "string") {
+          setUserState(JSON.parse(cached));
+          hadCache = true;
+        }
+      } catch {}
+      // Only block on the spinner if there's nothing cached to show.
+      if (!hadCache) setLoading(true);
+      // 2. Revalidate in the background.
       try {
         await refresh();
       } finally {
