@@ -495,20 +495,39 @@ async def delete_account(current=Depends(get_current_user)):
     return {"ok": True}
 
 
+async def _follow_status_map(viewer_id: str, target_ids: List[str]) -> Dict[str, str]:
+    """user_id -> 'accepted' | 'pending' for the viewer's outgoing follows."""
+    out: Dict[str, str] = {}
+    if not target_ids:
+        return out
+    async for f in db.follows.find({"follower_id": viewer_id, "following_id": {"$in": target_ids}}):
+        out[f["following_id"]] = f.get("status", "accepted")
+    return out
+
+
 @api.get("/users/search/q")
 async def search_users(q: str, current=Depends(get_current_user_optional)):
     if not q or len(q) < 1:
         return {"users": []}
     pattern = re.escape(q.lower())
     cursor = db.users.find({
+        "is_banned": {"$ne": True},
         "$or": [
             {"username": {"$regex": pattern}},
             {"display_name": {"$regex": pattern, "$options": "i"}},
-        ]
+        ],
     }, {"_id": 0}).limit(30)
     users = []
     async for u in cursor:
         users.append(public_user(u))
+    # Attach follow state so the client can show Follow buttons inline
+    if current:
+        fmap = await _follow_status_map(current["user_id"], [u["user_id"] for u in users])
+        for u in users:
+            st = fmap.get(u["user_id"])
+            u["is_following"] = st == "accepted"
+            u["follow_pending"] = st == "pending"
+            u["is_self"] = u["user_id"] == current["user_id"]
     return {"users": users}
 
 
@@ -519,10 +538,17 @@ async def suggested_users(current=Depends(get_current_user)):
         already.add(f["following_id"])
     already.add(current["user_id"])
     already |= await blocked_user_ids(current["user_id"])
-    cursor = db.users.find({"user_id": {"$nin": list(already)}}, {"_id": 0}).limit(20)
+    cursor = db.users.find({
+        "user_id": {"$nin": list(already)},
+        "is_banned": {"$ne": True},
+    }, {"_id": 0}).limit(20)
     users = []
     async for u in cursor:
-        users.append(public_user(u))
+        u_pub = public_user(u)
+        u_pub["is_following"] = False
+        u_pub["follow_pending"] = False
+        u_pub["is_self"] = False
+        users.append(u_pub)
     return {"users": users}
 
 

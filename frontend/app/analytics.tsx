@@ -65,12 +65,12 @@ export default function AnalyticsScreen() {
           <View style={styles.tile}>
             <Text style={styles.tileLabel}>TOTAL VOLUME</Text>
             <Text style={styles.tileValue}>{fmtVolume(overview?.total_volume || 0, user?.weight_unit || "kg")}</Text>
-            <Text style={styles.tileMeta}>lifetime-equiv</Text>
+            <Text style={styles.tileMeta}>last 12 weeks</Text>
           </View>
           <View style={styles.tile}>
             <Text style={styles.tileLabel}>DURATION</Text>
             <Text style={styles.tileValue}>{fmtDuration(overview?.total_duration_seconds || 0)}</Text>
-            <Text style={styles.tileMeta}>training time</Text>
+            <Text style={styles.tileMeta}>last 12 weeks</Text>
           </View>
         </View>
 

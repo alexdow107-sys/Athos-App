@@ -108,10 +108,11 @@ function CalendarModal({
 export default function WorkoutTab() {
   const router = useRouter();
   const { user } = useAuth();
-  const { active, elapsed, startWorkout, cancelWorkout } = useWorkout();
+  const { active, elapsed, startWorkout, startWorkoutFromRoutine, cancelWorkout } = useWorkout();
   const [starting, setStarting] = useState(false);
   const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
   const [allCardio, setAllCardio] = useState<any[]>([]);
+  const [routines, setRoutines] = useState<any[]>([]);
   const [showCal, setShowCal] = useState(false);
 
   // Which date is "selected" — drives week shown + day filter
@@ -134,12 +135,14 @@ export default function WorkoutTab() {
   const loadData = useCallback(async () => {
     if (!user?.user_id) return;
     try {
-      const [wRes, cRes] = await Promise.all([
+      const [wRes, cRes, rRes] = await Promise.all([
         api<{ workouts: any[] }>(`/workouts/user/${user.user_id}?limit=100`).catch(() => ({ workouts: [] })),
         api<{ cardio: any[] }>(`/cardio?limit=200`).catch(() => ({ cardio: [] })),
+        api<{ routines: any[] }>("/routines").catch(() => ({ routines: [] })),
       ]);
       setAllWorkouts(wRes.workouts || []);
       setAllCardio(cRes.cardio || []);
+      setRoutines(rRes.routines || []);
     } catch {}
   }, [user?.user_id]);
 
@@ -200,6 +203,14 @@ export default function WorkoutTab() {
   const onStart = async () => {
     setStarting(true);
     try { await startWorkout(); router.push("/workout/active"); }
+    catch (e: any) { Alert.alert("Failed", e.message || "Could not start workout"); }
+    finally { setStarting(false); }
+  };
+
+  const onStartRoutine = async (routine: any) => {
+    if (starting) return;
+    setStarting(true);
+    try { await startWorkoutFromRoutine(routine); router.push("/workout/active"); }
     catch (e: any) { Alert.alert("Failed", e.message || "Could not start workout"); }
     finally { setStarting(false); }
   };
@@ -349,6 +360,31 @@ export default function WorkoutTab() {
                 <Ionicons name="add" size={22} color={colors.accentGreen} />
               </View>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* One-tap routine quick start */}
+        {!active && routines.length > 0 && (
+          <View style={styles.quickStartWrap}>
+            <Text style={styles.quickStartLabel}>QUICK START</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: spacing.lg }}>
+              {routines.slice(0, 8).map((r) => (
+                <TouchableOpacity
+                  key={r.routine_id}
+                  testID={`quickstart-${r.routine_id}`}
+                  style={styles.quickStartChip}
+                  onPress={() => onStartRoutine(r)}
+                  activeOpacity={0.8}
+                  disabled={starting}
+                >
+                  <Ionicons name="play" size={12} color={colors.brand} />
+                  <View>
+                    <Text style={styles.quickStartName} numberOfLines={1}>{r.name}</Text>
+                    <Text style={styles.quickStartMeta}>{r.exercises?.length || 0} exercises</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -597,6 +633,17 @@ const styles = StyleSheet.create({
     letterSpacing: 1, textTransform: "uppercase",
     paddingHorizontal: spacing.lg, marginTop: spacing.xl, marginBottom: spacing.sm,
   },
+
+  quickStartWrap: { marginTop: spacing.md, paddingLeft: spacing.lg },
+  quickStartLabel: { fontSize: 10, fontWeight: "800", color: colors.textMuted, letterSpacing: 1, marginBottom: 8 },
+  quickStartChip: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 14, paddingVertical: 9,
+    backgroundColor: colors.bg2, borderRadius: radius.full,
+    borderWidth: 1, borderColor: colors.border, maxWidth: 220,
+  },
+  quickStartName: { color: colors.text, fontSize: 13, fontWeight: "800" },
+  quickStartMeta: { color: colors.textMuted, fontSize: 10, fontWeight: "600" },
 
   emptyDay: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   emptyDayText: { color: colors.textMuted, fontSize: 13, fontStyle: "italic" },

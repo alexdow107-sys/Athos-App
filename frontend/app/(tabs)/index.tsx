@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Image, Dimensions, ScrollView, Alert, Platform,
+  RefreshControl, Image, Dimensions, ScrollView, Alert, Platform, Animated,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -42,6 +42,50 @@ function StatBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Pulsing placeholder cards shown while the feed loads — reads as "content
+ * on its way" instead of a bare spinner. */
+function FeedSkeleton() {
+  const pulse = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.35, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const Card = () => (
+    <Animated.View style={[skel.card, { opacity: pulse }]}>
+      <View style={skel.headerRow}>
+        <View style={skel.avatar} />
+        <View style={{ flex: 1, marginLeft: 10, gap: 6 }}>
+          <View style={[skel.line, { width: "45%" }]} />
+          <View style={[skel.line, { width: "25%", height: 8 }]} />
+        </View>
+      </View>
+      <View style={[skel.line, { width: "60%", height: 16, marginTop: 14 }]} />
+      <View style={skel.statsBox} />
+    </Animated.View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: BLACK }}>
+      <Card /><Card /><Card />
+    </View>
+  );
+}
+
+const skel = StyleSheet.create({
+  card: { backgroundColor: CARD, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: LINE },
+  headerRow: { flexDirection: "row", alignItems: "center" },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: CARD2 },
+  line: { height: 11, borderRadius: 5, backgroundColor: CARD2 },
+  statsBox: { height: 64, borderRadius: radius.lg, backgroundColor: CARD2, marginTop: 12 },
+});
+
 export default function FeedScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -75,6 +119,7 @@ export default function FeedScreen() {
 
   const onLike = async (p: Post) => {
     const liked = !p.liked;
+    if (liked) hapticSelection();
     setPosts(prev => prev.map(x => x.post_id === p.post_id
       ? { ...x, liked, likes_count: x.likes_count + (liked ? 1 : -1) } : x));
     try {
@@ -346,9 +391,7 @@ export default function FeedScreen() {
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: BLACK }}>
-          <ActivityIndicator color={colors.brand} />
-        </View>
+        <FeedSkeleton />
       ) : (
         <FlatList
           testID="feed-list"
