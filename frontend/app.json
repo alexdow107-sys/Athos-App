@@ -14,6 +14,7 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Athos shows a lock screen notification so you can see your workout timer and rest countdown without unlocking your phone.",
+        "NSPhotoLibraryUsageDescription": "Athos needs access to your photo library so you can attach photos to your workout posts and set your profile picture — for example, adding a progress photo to a workout you share with friends.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
