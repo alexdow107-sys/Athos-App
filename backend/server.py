@@ -323,10 +323,16 @@ async def startup():
     await db.blocks.create_index([("blocker_id", 1), ("blocked_id", 1)], unique=True)
     await db.blocks.create_index([("blocked_id", 1)])
     await db.reports.create_index([("status", 1), ("created_at", -1)])
-    # Seed exercises (idempotent: insert any system exercise not already present by name)
+    # Sync system exercises to the curated seed: add missing, retire removed
+    # (e.g. single-arm variants — the logger has an L/R toggle instead).
+    # Custom (user-created) exercises are never touched.
+    seed_names = {ex["name"] for ex in SEED_EXERCISES}
     existing_names = set()
     async for ex in db.exercises.find({"system": True}, {"_id": 0, "name": 1}):
         existing_names.add(ex["name"])
+    to_remove = existing_names - seed_names
+    if to_remove:
+        await db.exercises.delete_many({"system": True, "name": {"$in": list(to_remove)}})
     docs = []
     for ex in SEED_EXERCISES:
         if ex["name"] in existing_names:
@@ -343,7 +349,7 @@ async def startup():
         })
     if docs:
         await db.exercises.insert_many(docs)
-    logger.info(f"Seeded {len(docs)} new exercises ({len(existing_names)} already present)")
+    logger.info(f"Exercise sync: +{len(docs)} added, -{len(to_remove)} retired, {len(seed_names)} in catalog")
 
 
 @app.on_event("shutdown")
