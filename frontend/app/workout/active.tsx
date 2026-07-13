@@ -306,9 +306,15 @@ const ExerciseCard: React.FC<ExCardProps> = ({
       try {
         const r = await api<any>(`/exercises/${ex.exercise_id}/history`);
         setHistory(r);
+        // Carry forward the last session's notes so you can review/edit them.
+        if (r?.last_session?.notes && !ex.notes) onNotes(r.last_session.notes);
       } catch {}
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ex.exercise_id]);
+
+  const prevSets: any[] = history?.last_session?.sets || [];
+  const pr = history?.personal_record;
 
   return (
     <View style={styles.exCard} testID={`exercise-card-${index}`}>
@@ -316,13 +322,20 @@ const ExerciseCard: React.FC<ExCardProps> = ({
         <View style={{ flex: 1 }}>
           <Text style={styles.exName}>{ex.exercise_name}</Text>
           {ex.machine ? <Text style={styles.exMeta}>{ex.machine}</Text> : null}
-          {history?.personal_record ? (
+          {pr ? (
             <Text style={styles.exHistory}>
-              PR: {Math.round(history.personal_record.estimated_1rm)} {weightUnit} · {history.session_count} sessions
+              🏆 PR {pr.weight} {weightUnit}{pr.reps ? ` × ${pr.reps}` : ""} · {history.session_count} session{history.session_count !== 1 ? "s" : ""}
             </Text>
           ) : (
             <Text style={styles.exHistory}>No previous data</Text>
           )}
+          {prevSets.length > 0 ? (
+            <Text style={styles.exLast} numberOfLines={1}>
+              Last: {prevSets.map((s: any) => ex.is_unilateral
+                ? `${s.left_weight ?? 0}/${s.right_weight ?? 0}×${s.left_reps ?? 0}`
+                : `${s.weight ?? 0}×${s.reps ?? 0}`).join("  ·  ")}
+            </Text>
+          ) : null}
         </View>
         <TouchableOpacity testID={`remove-exercise-${index}`} onPress={onRemove} style={styles.iconBtn}>
           <Ionicons name="trash-outline" size={18} color={colors.danger} />
@@ -378,7 +391,10 @@ const ExerciseCard: React.FC<ExCardProps> = ({
         <View style={{ width: 36 }} />
       </View>
 
-      {ex.sets.map((s, si) => (
+      {ex.sets.map((s, si) => {
+        const prev = prevSets[si];
+        const ph = (v: any) => (v != null && v !== 0 ? String(v) : "0");
+        return (
         <View key={si} style={[styles.setRow, s.completed && styles.setRowCompleted]} testID={`set-row-${index}-${si}`}>
           <Text style={styles.setIndex}>{si + 1}</Text>
           {ex.is_unilateral ? (
@@ -386,18 +402,18 @@ const ExerciseCard: React.FC<ExCardProps> = ({
               <View style={[styles.uniGroup, { flex: 1 }]}>
                 <TextInput
                   testID={`set-${index}-${si}-left-weight`}
-                  value={String(s.left_weight ?? "")}
+                  value={s.left_weight ? String(s.left_weight) : ""}
                   onChangeText={(t) => onUpdateSet(si, { left_weight: parseFloat(t) || 0 })}
-                  placeholder="0" keyboardType="numeric"
+                  placeholder={ph(prev?.left_weight)} keyboardType="numeric"
                   placeholderTextColor={colors.textMuted}
                   style={styles.setInput}
                 />
                 <Text style={styles.uniX}>×</Text>
                 <TextInput
                   testID={`set-${index}-${si}-left-reps`}
-                  value={String(s.left_reps ?? "")}
+                  value={s.left_reps ? String(s.left_reps) : ""}
                   onChangeText={(t) => onUpdateSet(si, { left_reps: parseInt(t, 10) || 0 })}
-                  placeholder="0" keyboardType="numeric"
+                  placeholder={ph(prev?.left_reps)} keyboardType="numeric"
                   placeholderTextColor={colors.textMuted}
                   style={styles.setInput}
                 />
@@ -405,18 +421,18 @@ const ExerciseCard: React.FC<ExCardProps> = ({
               <View style={[styles.uniGroup, { flex: 1 }]}>
                 <TextInput
                   testID={`set-${index}-${si}-right-weight`}
-                  value={String(s.right_weight ?? "")}
+                  value={s.right_weight ? String(s.right_weight) : ""}
                   onChangeText={(t) => onUpdateSet(si, { right_weight: parseFloat(t) || 0 })}
-                  placeholder="0" keyboardType="numeric"
+                  placeholder={ph(prev?.right_weight)} keyboardType="numeric"
                   placeholderTextColor={colors.textMuted}
                   style={styles.setInput}
                 />
                 <Text style={styles.uniX}>×</Text>
                 <TextInput
                   testID={`set-${index}-${si}-right-reps`}
-                  value={String(s.right_reps ?? "")}
+                  value={s.right_reps ? String(s.right_reps) : ""}
                   onChangeText={(t) => onUpdateSet(si, { right_reps: parseInt(t, 10) || 0 })}
-                  placeholder="0" keyboardType="numeric"
+                  placeholder={ph(prev?.right_reps)} keyboardType="numeric"
                   placeholderTextColor={colors.textMuted}
                   style={styles.setInput}
                 />
@@ -426,17 +442,17 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             <>
               <TextInput
                 testID={`set-${index}-${si}-weight`}
-                value={String(s.weight ?? "")}
+                value={s.weight ? String(s.weight) : ""}
                 onChangeText={(t) => onUpdateSet(si, { weight: parseFloat(t) || 0 })}
-                placeholder="0" keyboardType="numeric"
+                placeholder={ph(prev?.weight)} keyboardType="numeric"
                 placeholderTextColor={colors.textMuted}
                 style={[styles.setInput, { flex: 1, marginRight: 6 }]}
               />
               <TextInput
                 testID={`set-${index}-${si}-reps`}
-                value={String(s.reps ?? "")}
+                value={s.reps ? String(s.reps) : ""}
                 onChangeText={(t) => onUpdateSet(si, { reps: parseInt(t, 10) || 0 })}
-                placeholder="0" keyboardType="numeric"
+                placeholder={ph(prev?.reps)} keyboardType="numeric"
                 placeholderTextColor={colors.textMuted}
                 style={[styles.setInput, { flex: 1 }]}
               />
@@ -453,7 +469,8 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             <Ionicons name={s.completed ? "checkmark" : "trash-outline"} size={16} color={s.completed ? "#fff" : colors.textMuted} />
           </TouchableOpacity>
         </View>
-      ))}
+        );
+      })}
 
       <TouchableOpacity testID={`add-set-${index}`} onPress={onAddSet} style={styles.addSetBtn}>
         <Ionicons name="add" size={16} color={colors.brand} />
@@ -499,6 +516,7 @@ const styles = StyleSheet.create({
   exName: { color: colors.brand, fontSize: 16, fontWeight: "800" },
   exMeta: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
   exHistory: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+  exLast: { color: colors.textSecondary, fontSize: 11, marginTop: 2, fontWeight: "600" },
   settingsBox: { borderTopWidth: 1, borderTopColor: colors.divider, marginTop: spacing.sm, paddingTop: spacing.sm },
   settingsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
   settingsLabel: { color: colors.textSecondary, fontSize: 13, fontWeight: "600" },

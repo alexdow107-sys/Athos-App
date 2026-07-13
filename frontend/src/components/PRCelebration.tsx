@@ -10,7 +10,8 @@ const CONFETTI_COLORS = ["#C89A3A", "#6BC5DE", "#3D7A52", "#E0C079", "#C25A35"];
 
 interface PR {
   exercise_name: string;
-  estimated_1rm: number;
+  weight: number;
+  reps?: number;
 }
 
 /** Lightweight falling-confetti burst, drawn behind the card. */
@@ -111,7 +112,7 @@ export function PRCelebration({
               <View key={i} style={styles.prRow}>
                 <Ionicons name="ribbon" size={16} color="#C89A3A" />
                 <Text style={styles.prName} numberOfLines={1}>{p.exercise_name}</Text>
-                <Text style={styles.prVal}>{Math.round(p.estimated_1rm)} {weightUnit}</Text>
+                <Text style={styles.prVal}>{p.weight} {weightUnit}{p.reps ? ` × ${p.reps}` : ""}</Text>
               </View>
             ))}
           </View>

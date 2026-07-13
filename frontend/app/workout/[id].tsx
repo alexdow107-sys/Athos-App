@@ -185,7 +185,7 @@ export default function WorkoutDetailScreen() {
               {w.prs.map((pr: any, i: number) => (
                 <View key={i} style={styles.prRow}>
                   <Text style={styles.prName}>{pr.exercise_name}</Text>
-                  <Text style={styles.prValue}>{Math.round(pr.estimated_1rm)} {user?.weight_unit || "kg"} est. 1RM</Text>
+                  <Text style={styles.prValue}>{pr.weight} {user?.weight_unit || "kg"}{pr.reps ? ` × ${pr.reps}` : ""}</Text>
                 </View>
               ))}
             </View>

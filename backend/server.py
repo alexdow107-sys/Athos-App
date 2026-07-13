@@ -984,8 +984,9 @@ async def exercise_history(exercise_id: str, current=Depends(get_current_user)):
 
     sessions = []
     lifetime_volume = 0.0
-    best_1rm = 0.0
-    best_set: Optional[dict] = None
+    best_weight = 0.0
+    best_reps = 0
+    pr_date = None
     async for w in cursor:
         for ex in w.get("exercises", []):
             if ex.get("exercise_id") != exercise_id:
@@ -999,21 +1000,25 @@ async def exercise_history(exercise_id: str, current=Depends(get_current_user)):
                     lw, lr = s.get("left_weight") or 0, s.get("left_reps") or 0
                     rw, rr = s.get("right_weight") or 0, s.get("right_reps") or 0
                     vol = (lw * lr) + (rw * rr)
-                    one_rm = max(epley_1rm(lw, lr), epley_1rm(rw, rr))
+                    top_w = max(lw, rw)
+                    top_reps = lr if lw >= rw else rr
                 else:
                     w_, r_ = s.get("weight") or 0, s.get("reps") or 0
                     vol = w_ * r_
-                    one_rm = epley_1rm(w_, r_)
+                    top_w, top_reps = w_, r_
                 session_volume += vol
                 lifetime_volume += vol
-                if one_rm > best_1rm:
-                    best_1rm = one_rm
-                    best_set = {**s, "machine": ex.get("machine"), "date": w.get("started_at")}
+                # PR = heaviest weight ever lifted (ties broken by more reps)
+                if top_w > best_weight or (top_w == best_weight and top_reps > best_reps):
+                    best_weight = top_w
+                    best_reps = top_reps
+                    pr_date = w.get("started_at")
                 session_sets.append(s)
             sessions.append({
                 "workout_id": w["workout_id"],
                 "date": w.get("started_at"),
                 "machine": ex.get("machine"),
+                "notes": ex.get("notes") or "",
                 "sets": session_sets,
                 "volume": session_volume,
             })
@@ -1023,7 +1028,7 @@ async def exercise_history(exercise_id: str, current=Depends(get_current_user)):
     return {
         "sessions": sessions,
         "last_session": sessions[0] if sessions else None,
-        "personal_record": {"estimated_1rm": best_1rm, "set": best_set} if best_set else None,
+        "personal_record": {"weight": best_weight, "reps": best_reps, "date": pr_date} if best_weight > 0 else None,
         "lifetime_volume": lifetime_volume,
         "session_count": len(sessions),
         "stall": stall,
@@ -1088,7 +1093,8 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
     for ex in body.exercises:
         ex_dict = ex.dict()
         ex_volume = 0.0
-        best_set_1rm = 0.0
+        best_weight = 0.0
+        best_reps = 0
         for s in ex_dict["sets"]:
             if not s.get("completed"):
                 continue
@@ -1098,20 +1104,24 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
                 rw = s.get("right_weight") or 0
                 rr = s.get("right_reps") or 0
                 vol = (lw * lr) + (rw * rr)
-                one_rm = max(epley_1rm(lw, lr), epley_1rm(rw, rr))
+                top_w = max(lw, rw)
+                top_reps = lr if lw >= rw else rr
             else:
-                vol = (s.get("weight") or 0) * (s.get("reps") or 0)
-                one_rm = epley_1rm(s.get("weight") or 0, s.get("reps") or 0)
+                w_ = s.get("weight") or 0
+                r_ = s.get("reps") or 0
+                vol = w_ * r_
+                top_w, top_reps = w_, r_
             ex_volume += vol
-            if one_rm > best_set_1rm:
-                best_set_1rm = one_rm
-                _best_set_data = s  # noqa: F841 - retained for future PR detail
+            # Heaviest set this workout (ties broken by more reps)
+            if top_w > best_weight or (top_w == best_weight and top_reps > best_reps):
+                best_weight = top_w
+                best_reps = top_reps
         total_volume += ex_volume
         ex_dict["volume"] = ex_volume
         exercises_clean.append(ex_dict)
 
-        # Check for PR (compare to prior best 1RM)
-        prior_best = 0.0
+        # PR = beating the heaviest weight ever lifted for this exercise
+        prior_best_weight = 0.0
         cursor = db.workouts.find({
             "user_id": current["user_id"],
             "status": "completed",
@@ -1126,18 +1136,18 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
                     if not ps.get("completed"):
                         continue
                     if pex.get("is_unilateral"):
-                        v = max(epley_1rm(ps.get("left_weight") or 0, ps.get("left_reps") or 0),
-                                epley_1rm(ps.get("right_weight") or 0, ps.get("right_reps") or 0))
+                        v = max(ps.get("left_weight") or 0, ps.get("right_weight") or 0)
                     else:
-                        v = epley_1rm(ps.get("weight") or 0, ps.get("reps") or 0)
-                    if v > prior_best:
-                        prior_best = v
-        if best_set_1rm > prior_best and best_set_1rm > 0:
+                        v = ps.get("weight") or 0
+                    if v > prior_best_weight:
+                        prior_best_weight = v
+        if best_weight > prior_best_weight and best_weight > 0:
             prs.append({
                 "exercise_id": ex.exercise_id,
                 "exercise_name": ex.exercise_name,
-                "estimated_1rm": best_set_1rm,
-                "prior_best": prior_best,
+                "weight": best_weight,
+                "reps": best_reps,
+                "prior_best": prior_best_weight,
             })
 
     update = {
