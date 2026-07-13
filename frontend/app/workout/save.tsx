@@ -30,7 +30,35 @@ export default function SaveWorkoutScreen() {
   const [visSheetOpen, setVisSheetOpen] = useState(false);
   const [saveAsRoutine, setSaveAsRoutine] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [prs, setPrs] = useState<any[] | null>(null);
+
+  // A PR was hit — show the celebration (it navigates home on close).
+  if (prs) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <PRCelebration
+          visible
+          prs={prs}
+          weightUnit={user?.weight_unit || "kg"}
+          onClose={() => router.replace("/(tabs)" as any)}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Saved successfully (or mid-save after finishWorkout cleared the active
+  // workout) — show a quick confirmation instead of flashing the empty state.
+  if (justSaved || (!active && saving)) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.savedWrap} testID="workout-saved-overlay">
+          <View style={styles.savedCircle}><Ionicons name="checkmark" size={44} color="#fff" /></View>
+          <Text style={styles.savedText}>Workout saved</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!active) {
     return (
@@ -120,7 +148,10 @@ export default function SaveWorkoutScreen() {
         setPrs(r.prs);
         return;
       }
-      router.replace("/(tabs)" as any);
+      // Show a brief "Workout saved" confirmation, then head to the home screen.
+      hapticSuccess();
+      setJustSaved(true);
+      setTimeout(() => router.replace("/(tabs)" as any), 750);
     } catch (e: any) {
       const msg = e?.message || "Could not save workout";
       if (Platform.OS === "web") window.alert("Failed: " + msg);
@@ -315,13 +346,6 @@ export default function SaveWorkoutScreen() {
           </View>
         </Pressable>
       </Modal>
-
-      <PRCelebration
-        visible={!!prs}
-        prs={prs || []}
-        weightUnit={user?.weight_unit || "kg"}
-        onClose={() => router.replace("/(tabs)" as any)}
-      />
     </SafeAreaView>
   );
 }
@@ -330,6 +354,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   emptyText: { color: colors.textMuted },
+  savedWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
+  savedCircle: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.success, alignItems: "center", justifyContent: "center" },
+  savedText: { color: colors.text, fontSize: 18, fontWeight: "800" },
   linkBtn: { marginTop: 12, padding: 10 },
   linkText: { color: colors.brand, fontWeight: "700" },
 
