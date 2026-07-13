@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import { AppState } from "react-native";
 import { storage } from "@/src/utils/storage";
 import { api } from "@/src/api/client";
 import { hapticLight } from "@/src/utils/haptics";
@@ -103,28 +104,41 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const refresh = useCallback(async () => {
-    // Try local cache first
+    // Local cache is the source of truth for in-progress exercise data — the
+    // server only holds the workout shell (no sets) until the workout is finished.
+    let localParsed: ActiveWorkout | null = null;
     try {
       const local = (await storage.getItem(ACTIVE_KEY, "")) as string;
       if (local && typeof local === "string") {
-        const parsed = JSON.parse(local);
-        setActiveState(parsed);
+        localParsed = JSON.parse(local);
+        if (localParsed) setActiveState(localParsed);
       }
     } catch {}
-    // Then sync with server
+    // Then sync with server — but never let the empty server shell clobber the
+    // locally-logged sets of the same workout.
     try {
       const r = await api<{ workout: any }>("/workouts/active");
       if (r.workout) {
-        const w: ActiveWorkout = {
-          workout_id: r.workout.workout_id,
-          name: r.workout.name,
-          notes: r.workout.notes,
-          exercises: r.workout.exercises || [],
-          started_at: r.workout.started_at,
-        };
-        setActiveState(w);
-        storage.setItem(ACTIVE_KEY, JSON.stringify(w) as any);
+        const serverW = r.workout;
+        const serverExCount = (serverW.exercises || []).length;
+        const localExCount = localParsed?.exercises?.length || 0;
+        // Same workout still active AND local has at least as much data → keep local.
+        if (localParsed && localParsed.workout_id === serverW.workout_id && localExCount >= serverExCount) {
+          setActiveState(localParsed);
+          storage.setItem(ACTIVE_KEY, JSON.stringify(localParsed) as any);
+        } else {
+          const w: ActiveWorkout = {
+            workout_id: serverW.workout_id,
+            name: serverW.name,
+            notes: serverW.notes,
+            exercises: serverW.exercises || [],
+            started_at: serverW.started_at,
+          };
+          setActiveState(w);
+          storage.setItem(ACTIVE_KEY, JSON.stringify(w) as any);
+        }
       } else {
+        // No active workout on the server — it was finished or cancelled elsewhere.
         setActiveState(null);
         storage.removeItem(ACTIVE_KEY);
       }
@@ -209,6 +223,33 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 5000); // tick every 5 s
     return () => clearInterval(notifTickRef.current);
   }, [active, rest]);
+
+  // Best-effort server backup of the in-progress workout so logged sets survive
+  // an app kill or device switch. Debounced ~2.5s after the last change; the
+  // local storage copy is still the primary source of truth.
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncProgress = useCallback((a: ActiveWorkout | null) => {
+    if (!a) return;
+    api(`/workouts/${a.workout_id}/progress`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: a.name, exercises: a.exercises }),
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => syncProgress(activeRef.current), 2500);
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [active, syncProgress]);
+
+  // Flush immediately when the app is backgrounded (before JS is suspended).
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") syncProgress(activeRef.current);
+    });
+    return () => sub.remove();
+  }, [syncProgress]);
 
   const startWorkout = async (name?: string) => {
     const r = await api<{ workout: any }>("/workouts/start", {

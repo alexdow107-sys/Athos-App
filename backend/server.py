@@ -192,6 +192,11 @@ class WorkoutFinishIn(BaseModel):
     visibility: str = "public"  # "public" or "private"
 
 
+class WorkoutProgressIn(BaseModel):
+    name: Optional[str] = None
+    exercises: List[ExerciseLogIn] = []
+
+
 class CommentIn(BaseModel):
     text: str
     parent_id: Optional[str] = None
@@ -1080,6 +1085,22 @@ async def start_workout(body: WorkoutCreateIn, current=Depends(get_current_user)
 async def get_active_workout(current=Depends(get_current_user)):
     w = await db.workouts.find_one({"user_id": current["user_id"], "status": "active"}, {"_id": 0})
     return {"workout": w}
+
+
+@api.patch("/workouts/{workout_id}/progress")
+async def save_workout_progress(workout_id: str, body: WorkoutProgressIn, current=Depends(get_current_user)):
+    """Best-effort backup of an in-progress workout so logged sets survive an app
+    kill or a device switch (the client also keeps a local copy)."""
+    update: Dict[str, Any] = {"exercises": [e.dict() for e in body.exercises]}
+    if body.name:
+        update["name"] = body.name
+    res = await db.workouts.update_one(
+        {"workout_id": workout_id, "user_id": current["user_id"], "status": "active"},
+        {"$set": update},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Active workout not found")
+    return {"ok": True}
 
 
 @api.post("/workouts/{workout_id}/finish")
