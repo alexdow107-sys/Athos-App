@@ -402,7 +402,7 @@ const ExerciseCard: React.FC<ExCardProps> = ({
                   testID={`set-${index}-${si}-left-weight`}
                   value={s.left_weight ? String(s.left_weight) : ""}
                   onChangeText={(t) => onUpdateSet(si, { left_weight: parseFloat(t) || 0 })}
-                  placeholder={ph(prev?.left_weight)} keyboardType="numeric"
+                  placeholder={ph(prev?.left_weight)} keyboardType="decimal-pad"
                   placeholderTextColor={colors.textMuted}
                   style={styles.setInput}
                 />
@@ -421,7 +421,7 @@ const ExerciseCard: React.FC<ExCardProps> = ({
                   testID={`set-${index}-${si}-right-weight`}
                   value={s.right_weight ? String(s.right_weight) : ""}
                   onChangeText={(t) => onUpdateSet(si, { right_weight: parseFloat(t) || 0 })}
-                  placeholder={ph(prev?.right_weight)} keyboardType="numeric"
+                  placeholder={ph(prev?.right_weight)} keyboardType="decimal-pad"
                   placeholderTextColor={colors.textMuted}
                   style={styles.setInput}
                 />
@@ -442,7 +442,7 @@ const ExerciseCard: React.FC<ExCardProps> = ({
                 testID={`set-${index}-${si}-weight`}
                 value={s.weight ? String(s.weight) : ""}
                 onChangeText={(t) => onUpdateSet(si, { weight: parseFloat(t) || 0 })}
-                placeholder={ph(prev?.weight)} keyboardType="numeric"
+                placeholder={ph(prev?.weight)} keyboardType="decimal-pad"
                 placeholderTextColor={colors.textMuted}
                 style={[styles.setInput, { flex: 1, marginRight: 6 }]}
               />

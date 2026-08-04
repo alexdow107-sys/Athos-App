@@ -28,7 +28,11 @@ JWT_SECRET = os.environ["JWT_SECRET_KEY"]
 JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_DAYS = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRE_DAYS", "30"))
 
-client = AsyncIOMotorClient(MONGO_URL)
+# tz_aware=True so datetimes read back from Mongo carry UTC tzinfo and serialize
+# with an offset (e.g. ...+00:00). Without it, naive datetimes serialize with no
+# zone and the app's `new Date()` reads them as LOCAL time — skewing workout
+# timers to 0 and dates to the wrong day for anyone behind UTC.
+client = AsyncIOMotorClient(MONGO_URL, tz_aware=True)
 db = client[DB_NAME]
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -1177,9 +1181,10 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
     if not w:
         raise HTTPException(status_code=404, detail="Workout not found")
 
-    started = w.get("started_at")
+    started = coerce_dt(w.get("started_at"))
     ended = now_utc()
-    duration = body.duration_seconds or int((ended - started).total_seconds()) if started else 0
+    duration = body.duration_seconds or (int((ended - started).total_seconds()) if started else 0)
+    duration = max(0, int(duration or 0))  # never store a negative/None duration
 
     # Compute volume + check PRs
     total_volume = 0.0

@@ -175,7 +175,8 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     tickRef.current = setInterval(() => {
       if (active?.started_at) {
         const startedMs = new Date(active.started_at).getTime();
-        setElapsed(Math.floor((Date.now() - startedMs) / 1000));
+        // Guard against a bad/future timestamp yielding a negative (stuck-at-0) timer.
+        setElapsed(Math.max(0, Math.floor((Date.now() - startedMs) / 1000)));
       }
       if (rest.running && rest.end_at) {
         const remain = Math.max(0, Math.round((rest.end_at - Date.now()) / 1000));
@@ -309,7 +310,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const finishWorkout = async (extras?: { caption?: string; photos?: string[]; visibility?: "public" | "private"; name?: string }) => {
     if (!active) return null;
-    const durationSec = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
+    const durationSec = Math.max(0, Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000));
     const r = await api<any>(`/workouts/${active.workout_id}/finish`, {
       method: "POST",
       body: JSON.stringify({
