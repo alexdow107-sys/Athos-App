@@ -5,6 +5,7 @@ import { colors } from "@/src/theme";
 import { View, Text, StyleSheet, AppState } from "react-native";
 import { useWorkout } from "@/src/context/WorkoutContext";
 import { api } from "@/src/api/client";
+import { WorkoutPill } from "@/src/components/WorkoutPill";
 
 const TabIcon: React.FC<{ name: any; color: string; focused: boolean; testID?: string; badge?: number }> = ({ name, color, focused, testID, badge }) => (
   <View testID={testID} style={{ alignItems: "center", justifyContent: "center" }}>
@@ -55,6 +56,7 @@ const WorkoutTabIcon: React.FC<{ color: string; focused: boolean }> = ({ color, 
 export default function TabsLayout() {
   const activityBadge = useActivityBadge();
   return (
+    <>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -113,6 +115,8 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    <WorkoutPill />
+    </>
   );
 }
 

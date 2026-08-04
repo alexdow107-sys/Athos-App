@@ -38,6 +38,7 @@ export default function NotificationsScreen() {
   const [tab, setTab] = useState<Tab>("activity");
   const [items, setItems] = useState<any[]>([]);
   const [convos, setConvos] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -48,14 +49,30 @@ export default function NotificationsScreen() {
         setItems(r.notifications);
         await api("/notifications/read", { method: "POST" });
       } else {
-        const r = await api<{ conversations: any[] }>("/conversations");
-        setConvos(r.conversations || []);
+        const [c, rq] = await Promise.all([
+          api<{ conversations: any[] }>("/conversations"),
+          api<{ requests: any[] }>("/conversations/requests").catch(() => ({ requests: [] })),
+        ]);
+        setConvos(c.conversations || []);
+        setRequests(rq.requests || []);
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [tab]);
+
+  const onAcceptReq = async (c: any) => {
+    setRequests((prev) => prev.filter((x) => x.conversation_id !== c.conversation_id));
+    try {
+      await api(`/conversations/${c.conversation_id}/accept`, { method: "POST" });
+      load();
+    } catch { load(); }
+  };
+  const onDeclineReq = async (c: any) => {
+    setRequests((prev) => prev.filter((x) => x.conversation_id !== c.conversation_id));
+    try { await api(`/conversations/${c.conversation_id}/decline`, { method: "POST" }); } catch {}
+  };
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
@@ -183,12 +200,43 @@ export default function NotificationsScreen() {
           renderItem={renderConvo}
           keyExtractor={(c) => c.conversation_id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+          ListHeaderComponent={
+            requests.length > 0 ? (
+              <View style={styles.reqSection}>
+                <Text style={styles.reqHeader}>Message requests · {requests.length}</Text>
+                {requests.map((c) => (
+                  <View key={c.conversation_id} style={styles.reqRow}>
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", flex: 1 }}
+                      activeOpacity={0.7}
+                      onPress={() => router.push(`/chats/${c.conversation_id}`)}
+                    >
+                      <Avatar uri={c.other_user?.profile_picture} name={c.other_user?.display_name} size={40} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.bold}>{c.other_user?.display_name || "User"}</Text>
+                        <Text style={styles.label} numberOfLines={1}>{c.last_message || "wants to message you"}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID={`accept-req-${c.conversation_id}`} onPress={() => onAcceptReq(c)} style={[styles.miniBtn, styles.miniAccept]}>
+                      <Text style={styles.miniBtnText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID={`decline-req-${c.conversation_id}`} onPress={() => onDeclineReq(c)} style={[styles.miniBtn, styles.miniDecline]}>
+                      <Text style={[styles.miniBtnText, { color: colors.text }]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <Text style={styles.convHeader}>Messages</Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No conversations yet</Text>
-              <Text style={styles.emptySub}>Open a user&apos;s profile and tap Message to start one.</Text>
-            </View>
+            requests.length === 0 ? (
+              <View style={styles.empty}>
+                <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
+                <Text style={styles.emptyText}>No conversations yet</Text>
+                <Text style={styles.emptySub}>Open a user&apos;s profile and tap Message to start one.</Text>
+              </View>
+            ) : null
           }
         />
       )}
@@ -205,6 +253,10 @@ const styles = StyleSheet.create({
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.brand },
   tabText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
   tabTextActive: { color: colors.text, fontWeight: "800" },
+  reqSection: { borderBottomWidth: 1, borderBottomColor: colors.divider },
+  reqHeader: { fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 1, textTransform: "uppercase", paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 6 },
+  reqRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, paddingVertical: 8 },
+  convHeader: { fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 1, textTransform: "uppercase", paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 4 },
   row: { flexDirection: "row", alignItems: "center", padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
   rowUnread: { backgroundColor: colors.brandLight + "40" },
   iconBadge: { position: "absolute", left: 48, top: 36, width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.bg },

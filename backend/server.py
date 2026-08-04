@@ -1860,9 +1860,16 @@ async def start_conversation(body: StartConversationIn, current=Depends(get_curr
     cid = _conv_id(current["user_id"], body.user_id)
     existing = await db.conversations.find_one({"conversation_id": cid})
     if not existing:
+        # Auto-accept if the recipient already follows the sender; otherwise this
+        # is a message request the recipient must approve before it hits their inbox.
+        recip_follows = await db.follows.find_one({
+            "follower_id": body.user_id, "following_id": current["user_id"], "status": "accepted",
+        })
         doc = {
             "conversation_id": cid,
             "participants": [current["user_id"], body.user_id],
+            "initiator_id": current["user_id"],
+            "accepted": bool(recip_follows),
             "last_message": None,
             "last_message_at": now_utc(),
             "created_at": now_utc(),
@@ -1871,12 +1878,50 @@ async def start_conversation(body: StartConversationIn, current=Depends(get_curr
     return {"conversation_id": cid}
 
 
+@api.get("/conversations/requests")
+async def list_message_requests(current=Depends(get_current_user)):
+    """Pending message requests sent TO the current user by people they don't follow."""
+    uid = current["user_id"]
+    items = []
+    async for c in db.conversations.find({"participants": uid, "accepted": False}, {"_id": 0}).sort("last_message_at", -1):
+        if c.get("initiator_id") == uid:
+            continue  # my own outgoing request, not one for me to approve
+        other_id = next((p for p in c["participants"] if p != uid), None)
+        other = await db.users.find_one({"user_id": other_id}, {"_id": 0}) if other_id else None
+        if not other or other.get("is_banned"):
+            continue
+        items.append({**c, "other_user": public_user(other)})
+    return {"requests": items}
+
+
+@api.post("/conversations/{conversation_id}/accept")
+async def accept_conversation(conversation_id: str, current=Depends(get_current_user)):
+    conv = await db.conversations.find_one({"conversation_id": conversation_id})
+    if not conv or current["user_id"] not in conv["participants"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await db.conversations.update_one({"conversation_id": conversation_id}, {"$set": {"accepted": True}})
+    return {"ok": True}
+
+
+@api.post("/conversations/{conversation_id}/decline")
+async def decline_conversation(conversation_id: str, current=Depends(get_current_user)):
+    conv = await db.conversations.find_one({"conversation_id": conversation_id})
+    if not conv or current["user_id"] not in conv["participants"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await db.messages.delete_many({"conversation_id": conversation_id})
+    await db.conversations.delete_one({"conversation_id": conversation_id})
+    return {"ok": True}
+
+
 @api.get("/conversations")
 async def list_conversations(current=Depends(get_current_user)):
     uid = current["user_id"]
     cursor = db.conversations.find({"participants": uid}, {"_id": 0}).sort("last_message_at", -1)
     items = []
     async for c in cursor:
+        # Hide pending requests sent TO me — they live in the Requests list.
+        if not c.get("accepted", True) and c.get("initiator_id") != uid:
+            continue
         other_id = next((p for p in c["participants"] if p != uid), None)
         if not other_id:
             continue
@@ -1895,6 +1940,9 @@ async def conversations_unread_count(current=Depends(get_current_user)):
     uid = current["user_id"]
     total = 0
     async for c in db.conversations.find({"participants": uid}):
+        # Don't count pending requests in the inbox badge (spam-resistant).
+        if not c.get("accepted", True) and c.get("initiator_id") != uid:
+            continue
         read_at = (c.get("read_at") or {}).get(uid)
         msg_filter: Dict[str, Any] = {"conversation_id": c["conversation_id"], "sender_id": {"$ne": uid}}
         if read_at:
@@ -1926,6 +1974,9 @@ async def send_message(conversation_id: str, body: MessageIn, current=Depends(ge
     other_id = next((p for p in conv["participants"] if p != current["user_id"]), None)
     if other_id and await is_blocked_between(current["user_id"], other_id):
         raise HTTPException(status_code=403, detail="You can't message this user")
+    # Replying to a pending request accepts it.
+    if not conv.get("accepted", True) and conv.get("initiator_id") != current["user_id"]:
+        await db.conversations.update_one({"conversation_id": conversation_id}, {"$set": {"accepted": True}})
     mid = gen_id("msg")
     doc = {
         "message_id": mid,
