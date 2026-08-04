@@ -885,7 +885,10 @@ async def list_exercises(category: Optional[str] = None, q: Optional[str] = None
     if category:
         query["category"] = category
     if q:
-        query["name"] = {"$regex": re.escape(q), "$options": "i"}
+        # Match name, muscle group, OR equipment category so "forearm", "smith",
+        # "cable", "back", etc. all surface relevant exercises.
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"name": rx}, {"muscle_group": rx}, {"category": rx}]
     # Include system + user's custom
     if current:
         query = {"$and": [query, {"$or": [{"system": True}, {"user_id": current["user_id"]}]}]} if query else \
@@ -913,6 +916,19 @@ async def create_custom_exercise(body: ExerciseCreateIn, current=Depends(get_cur
     await db.exercises.insert_one(doc)
     doc.pop("_id", None)
     return {"exercise": doc}
+
+
+@api.delete("/exercises/{exercise_id}")
+async def delete_custom_exercise(exercise_id: str, current=Depends(get_current_user)):
+    """Delete a user's own custom exercise. System exercises can't be deleted.
+    Past workouts keep their own snapshot, so history is unaffected."""
+    ex = await db.exercises.find_one({"exercise_id": exercise_id}, {"_id": 0})
+    if not ex:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    if ex.get("system") or ex.get("user_id") != current["user_id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own custom exercises")
+    await db.exercises.delete_one({"exercise_id": exercise_id})
+    return {"ok": True}
 
 
 # ===== ROUTINES (reusable workout templates) =====

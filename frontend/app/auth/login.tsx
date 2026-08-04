@@ -8,7 +8,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/context/AuthContext";
 import { Button } from "@/src/components/Button";
-import { Logo } from "@/src/components/Logo";
 import { colors, radius, spacing } from "@/src/theme";
 
 export default function LoginScreen() {
@@ -46,7 +45,7 @@ export default function LoginScreen() {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.headerWrap}>
-            <Logo size={64} />
+            <Text style={styles.logo}>Athos</Text>
             <Text style={styles.subtitle}>Train. Track. Triumph.</Text>
           </View>
 

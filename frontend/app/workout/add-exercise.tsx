@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Alert, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,7 +18,8 @@ export default function AddExerciseScreen() {
   const [newName, setNewName] = useState("");
 
   useEffect(() => {
-    (async () => {
+    // Debounced so results don't flicker/refetch on every keystroke.
+    const t = setTimeout(async () => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
@@ -28,7 +29,8 @@ export default function AddExerciseScreen() {
       } finally {
         setLoading(false);
       }
-    })();
+    }, 250);
+    return () => clearTimeout(t);
   }, [query]);
 
   const onPick = (ex: any) => {
@@ -38,6 +40,25 @@ export default function AddExerciseScreen() {
       is_unilateral: ex.is_unilateral || false,
     });
     router.back();
+  };
+
+  const onDeleteCustom = (ex: any) => {
+    const doDelete = async () => {
+      try {
+        await api(`/exercises/${ex.exercise_id}`, { method: "DELETE" });
+        setExercises((prev) => prev.filter((e) => e.exercise_id !== ex.exercise_id));
+      } catch (e: any) {
+        Alert.alert("Failed", e.message);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`Delete "${ex.name}"?`)) doDelete();
+      return;
+    }
+    Alert.alert("Delete custom exercise?", `"${ex.name}" will be removed. Past workouts keep their record.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: doDelete },
+    ]);
   };
 
   const onCreate = async () => {
@@ -85,6 +106,8 @@ export default function AddExerciseScreen() {
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
         />
         {query ? (
           <TouchableOpacity onPress={() => setQuery("")} style={{ paddingHorizontal: 12 }}>
@@ -136,6 +159,16 @@ export default function AddExerciseScreen() {
                 <Text style={styles.exName}>{item.name}</Text>
                 {!item.system ? <Text style={styles.exMeta}>Custom</Text> : null}
               </View>
+              {!item.system && (
+                <TouchableOpacity
+                  testID={`delete-custom-${item.exercise_id}`}
+                  onPress={() => onDeleteCustom(item)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ paddingHorizontal: 10 }}
+                >
+                  <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                </TouchableOpacity>
+              )}
               <Ionicons name="add" size={22} color={colors.brand} />
             </TouchableOpacity>
           )}

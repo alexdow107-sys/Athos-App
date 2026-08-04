@@ -138,7 +138,7 @@ export default function OnboardingScreen() {
           <Text style={styles.section}>Training goals</Text>
           <Text style={styles.label}>Days per week</Text>
           <View style={[styles.row, { flexWrap: "wrap", gap: 6 }]}>
-            {[2, 3, 4, 5, 6].map((d) => (
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
               <TouchableOpacity
                 key={d}
                 testID={`days-${d}`}
