@@ -57,6 +57,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [bwKey, setBwKey] = useState(0); // bump to make BodyWeightCard refetch
+  const [statsRange, setStatsRange] = useState<"30d" | "all">("30d");
 
   const load = useCallback(async () => {
     if (!user?.user_id) return;
@@ -64,7 +65,7 @@ export default function ProfileScreen() {
       const [wRes, cRes, sRes] = await Promise.all([
         api<{ workouts: any[] }>(`/workouts/user/${user.user_id}?limit=60`).catch(() => ({ workouts: [] })),
         api<{ cardio: any[] }>("/cardio?limit=60").catch(() => ({ cardio: [] })),
-        api<any>(`/users/${user.username}/stats`).catch(() => null),
+        api<any>(`/users/${user.username}/stats?range=${statsRange}`).catch(() => null),
       ]);
       setWorkouts(wRes.workouts || []);
       setCardio(cRes.cardio || []);
@@ -74,7 +75,7 @@ export default function ProfileScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.user_id, user?.username]);
+  }, [user?.user_id, user?.username, statsRange]);
 
   useFocusEffect(useCallback(() => {
     setLoading(true); load();
@@ -232,9 +233,22 @@ export default function ProfileScreen() {
           <ProfileStatCard icon="barbell-outline" value={fmtVolume(weekVolume, user.weight_unit || "kg")} label="Volume lifted" sub="this week" wide />
         </View>
 
-        {/* This Month + privacy toggle */}
+        {/* Stats: last 30 days / all time + privacy toggle */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>This Month</Text>
+          <View style={styles.rangeTabs}>
+            {(["30d", "all"] as const).map((r) => (
+              <TouchableOpacity
+                key={r}
+                testID={`stats-range-${r}`}
+                onPress={() => setStatsRange(r)}
+                style={[styles.rangeTab, statsRange === r && styles.rangeTabActive]}
+              >
+                <Text style={[styles.rangeTabText, statsRange === r && styles.rangeTabTextActive]}>
+                  {r === "30d" ? "Last 30 days" : "All time"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <TouchableOpacity testID="stats-privacy-toggle" onPress={toggleStatsPublic} style={styles.privacyToggle} activeOpacity={0.7}>
             <Ionicons name={statsPublic ? "earth" : "lock-closed"} size={12} color={statsPublic ? colors.brand : colors.textMuted} />
             <Text style={[styles.privacyToggleText, { color: statsPublic ? colors.brand : colors.textMuted }]}>
@@ -243,10 +257,10 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.progressGrid}>
-          <ProfileStatCard icon="calendar-outline" value={String(stats?.workouts ?? 0)} label="Workouts" sub="this month" />
-          <ProfileStatCard icon="flame-outline" value={String(stats?.days_worked_out ?? 0)} label="Days trained" sub="this month" />
-          <ProfileStatCard icon="repeat-outline" value={String(stats?.total_sets ?? 0)} label="Total sets" sub="this month" />
-          <ProfileStatCard icon="barbell-outline" value={fmtVolume(stats?.total_volume ?? 0, user.weight_unit || "kg")} label="Volume" sub="this month" />
+          <ProfileStatCard icon="calendar-outline" value={String(stats?.workouts ?? 0)} label="Workouts" sub={statsRange === "30d" ? "last 30 days" : "all time"} />
+          <ProfileStatCard icon="flame-outline" value={String(stats?.days_worked_out ?? 0)} label="Days trained" sub={statsRange === "30d" ? "last 30 days" : "all time"} />
+          <ProfileStatCard icon="repeat-outline" value={String(stats?.total_sets ?? 0)} label="Total sets" sub={statsRange === "30d" ? "last 30 days" : "all time"} />
+          <ProfileStatCard icon="barbell-outline" value={fmtVolume(stats?.total_volume ?? 0, user.weight_unit || "kg")} label="Volume" sub={statsRange === "30d" ? "last 30 days" : "all time"} />
         </View>
 
         {/* Body weight */}
@@ -440,6 +454,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg3,
   },
   privacyToggleText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.3 },
+  rangeTabs: { flexDirection: "row", gap: 6 },
+  rangeTab: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full, backgroundColor: colors.bg3 },
+  rangeTabActive: { backgroundColor: colors.brand },
+  rangeTabText: { fontSize: 11, fontWeight: "800", color: colors.textSecondary, letterSpacing: 0.3 },
+  rangeTabTextActive: { color: colors.textInverse },
 
   // Muscle distribution
   muscleCard: {

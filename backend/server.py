@@ -598,9 +598,10 @@ def _month_bounds(dt: datetime) -> tuple:
 
 
 @api.get("/users/{username}/stats")
-async def get_user_stats(username: str, current=Depends(get_current_user_optional)):
-    """Monthly training stats for a profile: workouts, days trained, sets, volume,
-    and a per-muscle-group set distribution. Hidden if the owner made stats private."""
+async def get_user_stats(username: str, range: str = "30d", current=Depends(get_current_user_optional)):
+    """Training stats for a profile: workouts, days trained, sets, volume, and a
+    per-muscle-group set distribution. range = "30d" (rolling last 30 days,
+    default) or "all" (all-time). Hidden if the owner made stats private."""
     u = await db.users.find_one({"username": username.lower()}, {"_id": 0})
     if not u or u.get("is_banned"):
         raise HTTPException(status_code=404, detail="User not found")
@@ -616,23 +617,22 @@ async def get_user_stats(username: str, current=Depends(get_current_user_optiona
             if not f:
                 return {"visible": False, "reason": "private"}
 
-    month_start, month_end = _month_bounds(now_utc())
-
     # exercise_id -> muscle group map
     ex_muscles: Dict[str, str] = {}
     async for ex in db.exercises.find({}, {"_id": 0, "exercise_id": 1, "muscle_group": 1}):
         ex_muscles[ex["exercise_id"]] = ex.get("muscle_group", "other")
+
+    q: Dict[str, Any] = {"user_id": u["user_id"], "status": "completed"}
+    if range != "all":
+        start = (now_utc() - timedelta(days=30)).date().isoformat()
+        q["date"] = {"$gte": start}
 
     workouts = 0
     total_sets = 0
     total_volume = 0.0
     active_days = set()
     muscle_sets: Dict[str, int] = {}
-    cursor = db.workouts.find({
-        "user_id": u["user_id"],
-        "status": "completed",
-        "date": {"$gte": month_start, "$lt": month_end},
-    })
+    cursor = db.workouts.find(q)
     async for w in cursor:
         workouts += 1
         total_volume += w.get("total_volume", 0) or 0
@@ -648,7 +648,7 @@ async def get_user_stats(username: str, current=Depends(get_current_user_optiona
     return {
         "visible": True,
         "is_self": is_self,
-        "month": month_start[:7],
+        "range": "all" if range == "all" else "30d",
         "workouts": workouts,
         "days_worked_out": len(active_days),
         "total_sets": total_sets,
