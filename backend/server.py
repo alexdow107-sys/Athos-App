@@ -206,6 +206,13 @@ class WorkoutProgressIn(BaseModel):
     exercises: List[ExerciseLogIn] = []
 
 
+class WorkoutEditIn(BaseModel):
+    name: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    date: Optional[str] = None
+    exercises: Optional[List[ExerciseLogIn]] = None
+
+
 class CommentIn(BaseModel):
     text: str
     parent_id: Optional[str] = None
@@ -1324,6 +1331,49 @@ async def finish_workout(workout_id: str, body: WorkoutFinishIn, current=Depends
 
     final = await db.workouts.find_one({"workout_id": workout_id}, {"_id": 0})
     return {"workout": final, "prs": prs}
+
+
+@api.patch("/workouts/{workout_id}")
+async def edit_workout(workout_id: str, body: WorkoutEditIn, current=Depends(get_current_user)):
+    """Edit a finished workout — its name, duration (e.g. if you forgot to end
+    it), date, and sets. Recomputes volume and keeps the linked feed post in sync."""
+    w = await db.workouts.find_one({"workout_id": workout_id})
+    if not w or w["user_id"] != current["user_id"]:
+        raise HTTPException(status_code=404, detail="Not found")
+    update: Dict[str, Any] = {}
+    if body.name is not None:
+        update["name"] = body.name.strip()[:100] or w.get("name", "Workout")
+    if body.duration_seconds is not None:
+        update["duration_seconds"] = max(0, int(body.duration_seconds))
+    if body.date is not None:
+        update["date"] = body.date
+    if body.exercises is not None:
+        total_volume = 0.0
+        clean = []
+        for ex in body.exercises:
+            exd = ex.dict()
+            vol = 0.0
+            for s in exd["sets"]:
+                if not s.get("completed"):
+                    continue
+                if exd.get("is_unilateral"):
+                    vol += (s.get("left_weight") or 0) * (s.get("left_reps") or 0) + (s.get("right_weight") or 0) * (s.get("right_reps") or 0)
+                else:
+                    vol += (s.get("weight") or 0) * (s.get("reps") or 0)
+            exd["volume"] = vol
+            total_volume += vol
+            clean.append(exd)
+        update["exercises"] = clean
+        update["total_volume"] = total_volume
+    if update:
+        await db.workouts.update_one({"workout_id": workout_id}, {"$set": update})
+        post_update = {k: update[k] for k in ("name", "duration_seconds", "total_volume") if k in update}
+        if "exercises" in update:
+            post_update["exercise_count"] = len(update["exercises"])
+        if post_update:
+            await db.posts.update_one({"workout_id": workout_id}, {"$set": post_update})
+    w2 = await db.workouts.find_one({"workout_id": workout_id}, {"_id": 0})
+    return {"workout": w2}
 
 
 @api.delete("/workouts/{workout_id}")

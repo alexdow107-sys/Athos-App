@@ -152,9 +152,14 @@ export default function WorkoutDetailScreen() {
               <Ionicons name="paper-plane-outline" size={20} color={colors.brand} />
             </TouchableOpacity>
             {isOwn ? (
-              <TouchableOpacity testID="delete-workout-btn" onPress={onDelete} style={styles.iconBtn}>
-                <Ionicons name="trash-outline" size={20} color={colors.danger} />
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity testID="edit-workout-btn" onPress={() => router.push(`/workout/edit/${id}` as any)} style={styles.iconBtn}>
+                  <Ionicons name="create-outline" size={20} color={colors.brand} />
+                </TouchableOpacity>
+                <TouchableOpacity testID="delete-workout-btn" onPress={onDelete} style={styles.iconBtn}>
+                  <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                </TouchableOpacity>
+              </>
             ) : null}
           </View>
         </View>
