@@ -12,6 +12,7 @@ import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
 import { fmtDuration } from "@/src/utils/format";
 import { api } from "@/src/api/client";
+import { DecimalInput } from "@/src/components/DecimalInput";
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
@@ -398,12 +399,11 @@ const ExerciseCard: React.FC<ExCardProps> = ({
           {ex.is_unilateral ? (
             <>
               <View style={[styles.uniGroup, { flex: 1 }]}>
-                <TextInput
+                <DecimalInput
                   testID={`set-${index}-${si}-left-weight`}
-                  value={s.left_weight ? String(s.left_weight) : ""}
-                  onChangeText={(t) => onUpdateSet(si, { left_weight: parseFloat(t) || 0 })}
-                  placeholder={ph(prev?.left_weight)} keyboardType="decimal-pad"
-                  placeholderTextColor={colors.textMuted}
+                  value={s.left_weight ?? 0}
+                  onChange={(n) => onUpdateSet(si, { left_weight: n })}
+                  placeholder={ph(prev?.left_weight)}
                   style={styles.setInput}
                 />
                 <Text style={styles.uniX}>×</Text>
@@ -417,12 +417,11 @@ const ExerciseCard: React.FC<ExCardProps> = ({
                 />
               </View>
               <View style={[styles.uniGroup, { flex: 1 }]}>
-                <TextInput
+                <DecimalInput
                   testID={`set-${index}-${si}-right-weight`}
-                  value={s.right_weight ? String(s.right_weight) : ""}
-                  onChangeText={(t) => onUpdateSet(si, { right_weight: parseFloat(t) || 0 })}
-                  placeholder={ph(prev?.right_weight)} keyboardType="decimal-pad"
-                  placeholderTextColor={colors.textMuted}
+                  value={s.right_weight ?? 0}
+                  onChange={(n) => onUpdateSet(si, { right_weight: n })}
+                  placeholder={ph(prev?.right_weight)}
                   style={styles.setInput}
                 />
                 <Text style={styles.uniX}>×</Text>
@@ -438,12 +437,11 @@ const ExerciseCard: React.FC<ExCardProps> = ({
             </>
           ) : (
             <>
-              <TextInput
+              <DecimalInput
                 testID={`set-${index}-${si}-weight`}
-                value={s.weight ? String(s.weight) : ""}
-                onChangeText={(t) => onUpdateSet(si, { weight: parseFloat(t) || 0 })}
-                placeholder={ph(prev?.weight)} keyboardType="decimal-pad"
-                placeholderTextColor={colors.textMuted}
+                value={s.weight ?? 0}
+                onChange={(n) => onUpdateSet(si, { weight: n })}
+                placeholder={ph(prev?.weight)}
                 style={[styles.setInput, { flex: 1, marginRight: 6 }]}
               />
               <TextInput
