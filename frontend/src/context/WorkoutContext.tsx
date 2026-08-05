@@ -13,6 +13,9 @@ import {
   cancelRestEndNotification,
   clearWorkoutNotifications,
 } from "@/src/utils/workoutNotification";
+import {
+  startWorkoutActivity, showRestOnActivity, showWorkoutOnActivity, endWorkoutActivity,
+} from "@/src/utils/liveActivity";
 
 export interface SetData {
   weight?: number;
@@ -188,6 +191,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (active) {
             const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
             showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
+            showWorkoutOnActivity(active.name, new Date(active.started_at).getTime());
           }
         }
       } else {
@@ -267,6 +271,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActive(w);
     // Show lock-screen notification immediately
     showWorkoutNotification({ workoutName: w.name, elapsedSeconds: 0, exerciseCount: 0 });
+    startWorkoutActivity(w.name, new Date(w.started_at).getTime());
     lastNotifElapsed.current = 0;
     return w;
   };
@@ -304,6 +309,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     setActive(w);
     showWorkoutNotification({ workoutName: w.name, elapsedSeconds: 0, exerciseCount: w.exercises.length });
+    startWorkoutActivity(w.name, new Date(w.started_at).getTime());
     lastNotifElapsed.current = 0;
     return w;
   };
@@ -326,6 +332,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActive(null);
     resetRest();
     clearWorkoutNotifications();
+    endWorkoutActivity(active.name, new Date(active.started_at).getTime());
     return r;
   };
 
@@ -341,6 +348,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     storage.removeItem(REST_KEY);
     clearWorkoutNotifications().catch(() => {});
     cancelRestEndNotification().catch(() => {});
+    endWorkoutActivity();
     // Fire delete in background — UI is already cleared regardless
     api(`/workouts/${workout.workout_id}`, { method: "DELETE" }).catch(() => {});
   };
@@ -459,6 +467,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
         showRestNotification({ workoutName: active.name, elapsedSeconds: el, restRemaining: rem });
         scheduleRestEndNotification({ workoutName: active.name, restEndMs: endAt });
+        showRestOnActivity(active.name, endAt);
       }
       return next;
     });
@@ -476,6 +485,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (active) {
       const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
       showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
+      showWorkoutOnActivity(active.name, new Date(active.started_at).getTime());
     }
   };
 
@@ -490,6 +500,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (active) {
       const el = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
       showWorkoutNotification({ workoutName: active.name, elapsedSeconds: el, exerciseCount: active.exercises.length });
+      showWorkoutOnActivity(active.name, new Date(active.started_at).getTime());
     }
   };
 

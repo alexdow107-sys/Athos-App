@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { colors, radius, spacing } from "@/src/theme";
+import { DecimalInput } from "@/src/components/DecimalInput";
 
 interface EditSet {
   weight?: number; reps?: number;
@@ -133,14 +134,14 @@ export default function EditWorkoutScreen() {
                   <Text style={styles.setIdx}>{si + 1}</Text>
                   {ex.is_unilateral ? (
                     <>
-                      <TextInput value={numStr(s.left_weight)} onChangeText={(t) => setSetField(ei, si, { left_weight: parseFloat(t) || 0 })} keyboardType="decimal-pad" placeholder="L wt" placeholderTextColor={colors.textMuted} style={styles.setInput} />
+                      <DecimalInput value={s.left_weight ?? 0} onChange={(n) => setSetField(ei, si, { left_weight: n })} placeholder="L wt" style={styles.setInput} />
                       <TextInput value={numStr(s.left_reps)} onChangeText={(t) => setSetField(ei, si, { left_reps: parseInt(t, 10) || 0 })} keyboardType="number-pad" placeholder="L reps" placeholderTextColor={colors.textMuted} style={styles.setInput} />
-                      <TextInput value={numStr(s.right_weight)} onChangeText={(t) => setSetField(ei, si, { right_weight: parseFloat(t) || 0 })} keyboardType="decimal-pad" placeholder="R wt" placeholderTextColor={colors.textMuted} style={styles.setInput} />
+                      <DecimalInput value={s.right_weight ?? 0} onChange={(n) => setSetField(ei, si, { right_weight: n })} placeholder="R wt" style={styles.setInput} />
                       <TextInput value={numStr(s.right_reps)} onChangeText={(t) => setSetField(ei, si, { right_reps: parseInt(t, 10) || 0 })} keyboardType="number-pad" placeholder="R reps" placeholderTextColor={colors.textMuted} style={styles.setInput} />
                     </>
                   ) : (
                     <>
-                      <TextInput value={numStr(s.weight)} onChangeText={(t) => setSetField(ei, si, { weight: parseFloat(t) || 0 })} keyboardType="decimal-pad" placeholder={wu} placeholderTextColor={colors.textMuted} style={[styles.setInput, { flex: 1 }]} />
+                      <DecimalInput value={s.weight ?? 0} onChange={(n) => setSetField(ei, si, { weight: n })} placeholder={wu} style={[styles.setInput, { flex: 1 }]} />
                       <TextInput value={numStr(s.reps)} onChangeText={(t) => setSetField(ei, si, { reps: parseInt(t, 10) || 0 })} keyboardType="number-pad" placeholder="reps" placeholderTextColor={colors.textMuted} style={[styles.setInput, { flex: 1 }]} />
                     </>
                   )}
