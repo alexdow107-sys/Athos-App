@@ -6,6 +6,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 
 import { api } from "@/src/api/client";
 import { colors, radius, spacing } from "@/src/theme";
@@ -94,6 +95,8 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [storyGroups, setStoryGroups] = useState<any[]>([]);
+  const [postingStory, setPostingStory] = useState(false);
   // Local follow state for Explore cards, keyed by user_id (Explore only ever
   // shows accounts you don't follow yet, so this starts empty on each load).
   const [followMap, setFollowMap] = useState<Record<string, FollowStatus>>({});
@@ -107,6 +110,8 @@ export default function FeedScreen() {
       setFollowMap({});
       const m = await api<{ count: number }>("/conversations/unread-count").catch(() => ({ count: 0 }));
       setUnread(m.count);
+      const st = await api<{ stories: any[] }>("/stories/feed").catch(() => ({ stories: [] }));
+      setStoryGroups(st.stories || []);
     } catch (e: any) {
       console.warn(e?.message);
     } finally {
@@ -114,6 +119,34 @@ export default function FeedScreen() {
       setRefreshing(false);
     }
   }, [tab]);
+
+  const onAddStory = async () => {
+    try {
+      if (Platform.OS !== "web") {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) { Alert.alert("Permission needed", "We need photo access to add a story."); return; }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6, base64: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      const dataUri = asset.base64 ? `data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}` : asset.uri;
+      setPostingStory(true);
+      await api("/stories", { method: "POST", body: JSON.stringify({ image: dataUri }) });
+      load();
+    } catch (e: any) {
+      Alert.alert("Could not add story", e?.message || "Try again");
+    } finally {
+      setPostingStory(false);
+    }
+  };
+
+  const openStory = (g: any) => {
+    const u = g.user;
+    router.push(`/story/${u.user_id}?name=${encodeURIComponent(u.display_name || "")}&pfp=${encodeURIComponent(u.profile_picture || "")}` as any);
+  };
+  const myStory = storyGroups.find((g) => g.is_self);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
@@ -172,19 +205,6 @@ export default function FeedScreen() {
       }
     }
   };
-
-  const storyUsers = React.useMemo(() => {
-    const seen = new Set<string>();
-    const out: any[] = [];
-    for (const p of posts) {
-      if (p.user && !seen.has(p.user.user_id)) {
-        seen.add(p.user.user_id);
-        out.push(p.user);
-        if (out.length >= 10) break;
-      }
-    }
-    return out;
-  }, [posts]);
 
   const renderPost = ({ item: p }: { item: Post }) => {
     const u = p.user;
@@ -346,23 +366,32 @@ export default function FeedScreen() {
   };
 
   const ListHeader = () => (
-    <>
-      {storyUsers.length > 0 && (
-        <View style={styles.storiesWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesInner}>
-            {storyUsers.map((u) => (
-              <TouchableOpacity key={u.user_id} style={styles.storyItem} activeOpacity={0.8}
-                onPress={() => router.push(`/user/${u.username}`)}>
-                <View style={styles.storyRing}>
-                  <Avatar uri={u.profile_picture} name={u.display_name} size={50} />
-                </View>
-                <Text style={styles.storyName} numberOfLines={1}>{u.display_name?.split(" ")[0]}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+    <View style={styles.storiesWrap}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storiesInner}>
+        {/* Your story */}
+        <View style={styles.storyItem}>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => myStory ? openStory(myStory) : onAddStory()}>
+            <View style={[styles.storyRing, myStory ? styles.ringActive : styles.ringInactive]}>
+              <Avatar uri={user?.profile_picture} name={user?.display_name} size={50} />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity testID="add-story-btn" onPress={onAddStory} style={styles.addStoryBadge} activeOpacity={0.8}>
+            <Ionicons name={postingStory ? "hourglass" : "add"} size={13} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.storyName} numberOfLines={1}>You</Text>
         </View>
-      )}
-    </>
+
+        {/* Following users with active stories */}
+        {storyGroups.filter((g) => !g.is_self).map((g) => (
+          <TouchableOpacity key={g.user.user_id} style={styles.storyItem} activeOpacity={0.8} onPress={() => openStory(g)}>
+            <View style={[styles.storyRing, styles.ringActive]}>
+              <Avatar uri={g.user.profile_picture} name={g.user.display_name} size={50} />
+            </View>
+            <Text style={styles.storyName} numberOfLines={1}>{g.user.display_name?.split(" ")[0]}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
   );
 
   return (
@@ -474,8 +503,14 @@ const styles = StyleSheet.create({
   storyItem: { alignItems: "center", width: 62 },
   storyRing: {
     width: 58, height: 58, borderRadius: 29,
-    borderWidth: 2, borderColor: colors.brand,
-    padding: 2, marginBottom: 5,
+    borderWidth: 2, padding: 2, marginBottom: 5,
+  },
+  ringActive: { borderColor: colors.brand },
+  ringInactive: { borderColor: "#333" },
+  addStoryBadge: {
+    position: "absolute", top: 36, right: 6,
+    width: 20, height: 20, borderRadius: 10, backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: BLACK,
   },
   storyName: { fontSize: 11, color: "#888", fontWeight: "600", textAlign: "center" },
 

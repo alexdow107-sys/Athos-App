@@ -126,7 +126,14 @@ export default function UserProfileScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
         <View style={styles.hero}>
-          <Avatar uri={profile.profile_picture} name={profile.display_name} size={84} />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            disabled={!profile.has_story}
+            onPress={() => profile.has_story && router.push(`/story/${profile.user_id}?name=${encodeURIComponent(profile.display_name || "")}&pfp=${encodeURIComponent(profile.profile_picture || "")}` as any)}
+            style={[styles.avatarRing, profile.has_story ? styles.avatarRingStory : styles.avatarRingPlain]}
+          >
+            <Avatar uri={profile.profile_picture} name={profile.display_name} size={84} />
+          </TouchableOpacity>
           <Text style={styles.name}>{profile.display_name}</Text>
           <Text style={styles.username}>@{profile.username}</Text>
           {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
@@ -261,6 +268,9 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 6 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
   hero: { alignItems: "center", padding: spacing.lg },
+  avatarRing: { borderRadius: 50, borderWidth: 2, padding: 3 },
+  avatarRingStory: { borderColor: colors.brand },
+  avatarRingPlain: { borderColor: "transparent" },
   name: { fontSize: 22, fontWeight: "900", color: colors.text, marginTop: spacing.md, letterSpacing: -0.3 },
   username: { color: colors.textMuted, fontSize: 14, marginTop: 2 },
   bio: { color: colors.textSecondary, fontSize: 14, marginTop: spacing.sm, textAlign: "center", paddingHorizontal: 24 },

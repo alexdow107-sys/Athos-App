@@ -337,6 +337,8 @@ async def startup():
     await db.workouts.create_index([("user_id", 1), ("started_at", -1)])
     await db.workouts.create_index([("user_id", 1), ("date", 1)])
     await db.routines.create_index([("user_id", 1), ("updated_at", -1)])
+    await db.stories.create_index([("user_id", 1), ("created_at", 1)])
+    await db.stories.create_index("expires_at", expireAfterSeconds=0)  # auto-delete expired stories
     await db.posts.create_index([("created_at", -1)])
     await db.follows.create_index([("follower_id", 1), ("following_id", 1)], unique=True)
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
@@ -587,6 +589,8 @@ async def get_user_profile(username: str, current=Depends(get_current_user_optio
         profile["follow_pending"] = False
         profile["is_self"] = False
         profile["is_blocked"] = False
+    profile["has_story"] = await db.stories.count_documents(
+        {"user_id": u["user_id"], "expires_at": {"$gt": now_utc()}}) > 0
     return {"user": profile}
 
 
@@ -1755,6 +1759,68 @@ async def list_comments(post_id: str, current=Depends(get_current_user_optional)
 async def post_by_workout(workout_id: str, current=Depends(get_current_user_optional)):
     p = await db.posts.find_one({"workout_id": workout_id}, {"_id": 0})
     return {"post": p}
+
+
+# ===== STORIES (24h) =====
+class StoryIn(BaseModel):
+    image: str  # base64 data-uri
+    caption: Optional[str] = None
+
+
+@api.post("/stories")
+async def create_story(body: StoryIn, current=Depends(get_current_user)):
+    if not body.image:
+        raise HTTPException(status_code=400, detail="Image required")
+    now = now_utc()
+    doc = {
+        "story_id": gen_id("st"),
+        "user_id": current["user_id"],
+        "image": body.image,
+        "caption": (body.caption or "")[:200] or None,
+        "created_at": now,
+        "expires_at": now + timedelta(hours=24),
+    }
+    await db.stories.insert_one(doc)
+    doc.pop("_id", None)
+    return {"story": doc}
+
+
+@api.get("/stories/feed")
+async def stories_feed(current=Depends(get_current_user)):
+    """Active stories from you + the people you follow, grouped by user (you first)."""
+    now = now_utc()
+    ids = [current["user_id"]]
+    async for f in db.follows.find({"follower_id": current["user_id"], "status": "accepted"}):
+        ids.append(f["following_id"])
+    blocked = await blocked_user_ids(current["user_id"])
+    grouped: Dict[str, list] = {}
+    async for s in db.stories.find({"user_id": {"$in": ids}, "expires_at": {"$gt": now}}, {"_id": 0}).sort("created_at", 1):
+        if s["user_id"] in blocked:
+            continue
+        grouped.setdefault(s["user_id"], []).append(s)
+    out = []
+    for uid, stories in grouped.items():
+        u = await db.users.find_one({"user_id": uid}, {"_id": 0})
+        if not u or u.get("is_banned"):
+            continue
+        out.append({"user": public_user(u), "count": len(stories), "is_self": uid == current["user_id"]})
+    out.sort(key=lambda x: (not x["is_self"]))
+    return {"stories": out}
+
+
+@api.get("/stories/user/{user_id}")
+async def user_stories(user_id: str, current=Depends(get_current_user)):
+    now = now_utc()
+    cursor = db.stories.find({"user_id": user_id, "expires_at": {"$gt": now}}, {"_id": 0}).sort("created_at", 1)
+    return {"stories": [s async for s in cursor]}
+
+
+@api.delete("/stories/{story_id}")
+async def delete_story(story_id: str, current=Depends(get_current_user)):
+    res = await db.stories.delete_one({"story_id": story_id, "user_id": current["user_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 @api.get("/exercises/{exercise_id}/leaderboard")

@@ -58,18 +58,21 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [bwKey, setBwKey] = useState(0); // bump to make BodyWeightCard refetch
   const [statsRange, setStatsRange] = useState<"30d" | "all">("30d");
+  const [hasStory, setHasStory] = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.user_id) return;
     try {
-      const [wRes, cRes, sRes] = await Promise.all([
+      const [wRes, cRes, sRes, stRes] = await Promise.all([
         api<{ workouts: any[] }>(`/workouts/user/${user.user_id}?limit=60`).catch(() => ({ workouts: [] })),
         api<{ cardio: any[] }>("/cardio?limit=60").catch(() => ({ cardio: [] })),
         api<any>(`/users/${user.username}/stats?range=${statsRange}`).catch(() => null),
+        api<{ stories: any[] }>(`/stories/user/${user.user_id}`).catch(() => ({ stories: [] })),
       ]);
       setWorkouts(wRes.workouts || []);
       setCardio(cRes.cardio || []);
       setStats(sRes);
+      setHasStory((stRes.stories || []).length > 0);
       setBwKey((k) => k + 1);
     } finally {
       setLoading(false);
@@ -150,9 +153,14 @@ export default function ProfileScreen() {
           style={styles.heroGradient}
         >
           <View style={styles.hero}>
-            <View style={styles.avatarRing}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              disabled={!hasStory}
+              onPress={() => hasStory && router.push(`/story/${user.user_id}?name=${encodeURIComponent(user.display_name || "")}&pfp=${encodeURIComponent(user.profile_picture || "")}` as any)}
+              style={[styles.avatarRing, hasStory ? styles.avatarRingStory : styles.avatarRingPlain]}
+            >
               <Avatar uri={user.profile_picture} name={user.display_name} size={72} />
-            </View>
+            </TouchableOpacity>
             <View style={styles.heroInfo}>
               <Text style={styles.displayName}>{user.display_name}</Text>
               <Text style={styles.username}>@{user.username}</Text>
@@ -403,9 +411,11 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   avatarRing: {
-    borderRadius: 42, borderWidth: 2, borderColor: colors.brand,
+    borderRadius: 42, borderWidth: 2,
     padding: 2,
   },
+  avatarRingStory: { borderColor: colors.brand },
+  avatarRingPlain: { borderColor: "#333" },
   heroInfo: { flex: 1 },
   displayName: { fontSize: 20, fontWeight: "900", color: colors.text, letterSpacing: -0.3 },
   username: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
